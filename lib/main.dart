@@ -72,6 +72,7 @@ void main() async {
     }
   }
 
+  // String initialRoute = Routes.HOME;
   runApp(MyApp(initialRoute: initialRoute));
 }
 

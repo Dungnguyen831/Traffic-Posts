@@ -3,21 +3,29 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:traffic_app/widgets/custom_alert.dart';
 
+import '../../../data/models/location_model.dart';
 import '../../../data/models/traffic_post_model.dart';
 import '../../../data/repositories/follow_repository.dart';
 import '../../../data/repositories/traffic_post_repository.dart';
+import '../../../data/services/sos_stream_service.dart';
 import '../../../services/storage_service.dart';
 import '../widgets/post_bottom_sheet.dart';
 import '../widgets/sos_bottom_sheet.dart';
-// import '../../../data/models/sos_model.dart';
-import '../../../data/services/sos_stream_service.dart';
+
+/// Các kiểu bản đồ hỗ trợ chuyển đổi
+enum AppMapType {
+  normal,
+  satellite,
+  terrain,
+}
 
 /// Hashtags được đánh dấu trên bản đồ – đồng bộ với CameraController
 const List<String> kMapHashtags = [
@@ -30,8 +38,8 @@ const List<String> kMapHashtags = [
 ];
 
 class MapController extends GetxController {
-  late GoogleMapController mapController;
-  final Completer<GoogleMapController> _controller = Completer();
+  // Controller điều khiển flutter_map engine (tránh xung đột tên với MapController của GetX)
+  final fm.MapController mapEngineController = fm.MapController();
   final TextEditingController searchController = TextEditingController();
   final Dio _dio = Dio();
   final String _apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
@@ -47,23 +55,51 @@ class MapController extends GetxController {
 
   Timer? _markerRefreshTimer;
 
+  // Tọa độ khởi tạo hợp lệ (Hà Nội) - Giá trị cố định sẵn sàng ngay lập tức
   final LatLng _center = const LatLng(
     21.028511,
     105.804817,
-  ); // Hanoi coordinates
+  );
   LatLng get center => _center;
 
   // Observables for Map State
-  var currentMapType = MapType.normal.obs;
+  var currentMapType = AppMapType.normal.obs;
   var isTrafficEnabled = false.obs;
-  var markers = <Marker>{}.obs;
-  var polylines = <Polyline>{}.obs;
+  final markers = <fm.Marker>[].obs;
+  final polylines = <fm.Polyline>[].obs;
   var isLoading = false.obs;
   var placeSuggestions = <Map<String, dynamic>>[].obs;
+
+  /// URL template tương ứng cho TileLayer dựa vào MapType hiện tại
+  String get currentTileUrl {
+    switch (currentMapType.value) {
+      case AppMapType.satellite:
+        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      case AppMapType.terrain:
+        return 'https://tile.opentopomap.org/{z}/{x}/{y}.png';
+      case AppMapType.normal:
+      default:
+        return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    }
+  }
+
+  /// URL dự phòng khi OpenStreetMap domain chính bị lỗi mạng hoặc bị DNS nhà mạng chặn
+  String? get fallbackTileUrl {
+    switch (currentMapType.value) {
+      case AppMapType.normal:
+        return 'https://tile.openstreetmap.de/{z}/{x}/{y}.png';
+      default:
+        return null;
+    }
+  }
 
   @override
   void onInit() {
     super.onInit();
+    // Khởi tạo bài viết mẫu để hiển thị ngay lập tức các marker lên bản đồ
+    taggedPosts.value = _getSampleTaggedPosts();
+    _buildPostMarkers();
+
     loadTaggedPosts();
     _markerRefreshTimer = Timer.periodic(
       const Duration(seconds: 30),
@@ -72,11 +108,11 @@ class MapController extends GetxController {
     _addDummyPolyline();
     _checkLocationPermission();
 
-    // 👇 THÊM: Lắng nghe danh sách SOS
+    // Lắng nghe danh sách SOS theo thời gian thực
     ever(SosStreamService.to.sosList, (_) {
       _buildSosMarkers();
     });
-    
+
     if (SosStreamService.to.sosList.isNotEmpty) {
       _buildSosMarkers();
     }
@@ -86,14 +122,93 @@ class MapController extends GetxController {
   void onClose() {
     _markerRefreshTimer?.cancel();
     searchController.dispose();
+    mapEngineController.dispose();
     super.onClose();
   }
 
-  void onMapCreated(GoogleMapController controller) {
-    if (!_controller.isCompleted) {
-      _controller.complete(controller);
-    }
-    mapController = controller;
+  void onMapReady() {
+    debugPrint('MapController: flutter_map engine is ready');
+  }
+
+  /// Danh sách bài viết mẫu đa dạng hashtag để kiểm tra hiển thị Marker trên bản đồ
+  List<TrafficPostModel> _getSampleTaggedPosts() {
+    return [
+      TrafficPostModel(
+        id: 'sample_ketxe',
+        userId: '101',
+        userName: 'Nguyễn Văn Nam',
+        content: 'Kẹt xe nghiêm trọng tại Ngã tư Cầu Giấy hướng về Kim Mã, các phương tiện di chuyển rất chậm.',
+        hashtags: ['ketxe'],
+        location: LocationModel(
+          lat: 21.033500,
+          lng: 105.800500,
+          address: 'Ngã tư Cầu Giấy, Hà Nội',
+        ),
+        likes: 15,
+        isLiked: false,
+        timestamp: DateTime.now().subtract(const Duration(minutes: 8)),
+      ),
+      TrafficPostModel(
+        id: 'sample_tainan',
+        userId: '102',
+        userName: 'Trần Thị Mai',
+        content: 'Va chạm giao thông nhẹ tại nút giao Kim Mã - Liễu Giai, đường hơi ùn ứ một làn xe.',
+        hashtags: ['tainan'],
+        location: LocationModel(
+          lat: 21.031500,
+          lng: 105.813000,
+          address: 'Kim Mã - Liễu Giai, Ba Đình, Hà Nội',
+        ),
+        likes: 6,
+        isLiked: true,
+        timestamp: DateTime.now().subtract(const Duration(minutes: 20)),
+      ),
+      TrafficPostModel(
+        id: 'sample_ngaplutnuoc',
+        userId: '103',
+        userName: 'Lê Hoàng Anh',
+        content: 'Đoạn đường ven sông Tô Lịch đang ngập nước khoảng 20-30cm sau mưa, các xe chú ý giảm tốc độ.',
+        hashtags: ['ngaplutnuoc'],
+        location: LocationModel(
+          lat: 21.025000,
+          lng: 105.802000,
+          address: 'Đường Láng, Cầu Giấy, Hà Nội',
+        ),
+        likes: 24,
+        isLiked: false,
+        timestamp: DateTime.now().subtract(const Duration(minutes: 35)),
+      ),
+      TrafficPostModel(
+        id: 'sample_giaothong',
+        userId: '104',
+        userName: 'Đội CSGT Số 2',
+        content: 'Đang có lực lượng CSGT điều tiết phân luồng giờ cao điểm, các phương tiện đi lại ổn định.',
+        hashtags: ['giaothong'],
+        location: LocationModel(
+          lat: 21.029500,
+          lng: 105.810000,
+          address: 'Đường Kim Mã, Ba Đình, Hà Nội',
+        ),
+        likes: 42,
+        isLiked: false,
+        timestamp: DateTime.now().subtract(const Duration(minutes: 50)),
+      ),
+      TrafficPostModel(
+        id: 'sample_sos',
+        userId: '105',
+        userName: 'Phạm Quốc Huy',
+        content: 'Xe máy bị thủng lốp cần hỗ trợ vá săm lưu động gần cây xăng Giảng Võ.',
+        hashtags: ['sos'],
+        location: LocationModel(
+          lat: 21.027000,
+          lng: 105.818000,
+          address: 'Giảng Võ, Đống Đa, Hà Nội',
+        ),
+        likes: 8,
+        isLiked: false,
+        timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
+      ),
+    ];
   }
 
   Future<void> fetchSuggestions(String input) async {
@@ -137,21 +252,26 @@ class MapController extends GetxController {
         Location location = locations.first;
         LatLng target = LatLng(location.latitude, location.longitude);
 
-        if (!_controller.isCompleted) return;
-        final ctrl = await _controller.future;
-        ctrl.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: target, zoom: 16.0),
-          ),
-        );
+        mapEngineController.move(target, 16.0);
 
+        markers.removeWhere(
+          (m) =>
+              m.key is ValueKey &&
+              (m.key as ValueKey).value == 'search_result',
+        );
         markers.add(
-          Marker(
-            markerId: const MarkerId('search_result'),
-            position: target,
-            infoWindow: InfoWindow(title: query),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueViolet,
+          fm.Marker(
+            key: const ValueKey('search_result'),
+            point: target,
+            width: 44,
+            height: 44,
+            child: Tooltip(
+              message: query,
+              child: const Icon(
+                Icons.location_pin,
+                color: Colors.purple,
+                size: 40,
+              ),
             ),
           ),
         );
@@ -167,10 +287,9 @@ class MapController extends GetxController {
 
   void toggleMapType() {
     final types = [
-      MapType.normal,
-      MapType.satellite,
-      MapType.terrain,
-      MapType.hybrid,
+      AppMapType.normal,
+      AppMapType.satellite,
+      AppMapType.terrain,
     ];
     final currentIndex = types.indexOf(currentMapType.value);
     currentMapType.value = types[(currentIndex + 1) % types.length];
@@ -219,15 +338,9 @@ class MapController extends GetxController {
       }
 
       Position position = await Geolocator.getCurrentPosition();
-      if (!_controller.isCompleted) return;
-      final ctrl = await _controller.future;
-      ctrl.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(position.latitude, position.longitude),
-            zoom: 15.0,
-          ),
-        ),
+      mapEngineController.move(
+        LatLng(position.latitude, position.longitude),
+        15.0,
       );
     } catch (e) {
       CustomAlert.showError('${'cannot_get_location'.tr}: $e');
@@ -252,16 +365,33 @@ class MapController extends GetxController {
         return tags.any((t) => kMapHashtags.contains(t));
       }).toList();
 
-      taggedPosts.value = filtered;
+      // Kết hợp bài viết từ API và danh sách bài viết mẫu để luôn có dữ liệu kiểm tra
+      final combined = [...filtered];
+      for (final sample in _getSampleTaggedPosts()) {
+        if (!combined.any((p) => p.id == sample.id)) {
+          combined.add(sample);
+        }
+      }
+
+      taggedPosts.value = combined;
       _buildPostMarkers();
     } catch (e) {
       debugPrint('MapController loadTaggedPosts error: $e');
+      // Nếu API gặp sự cố hoặc offline, đảm bảo vẫn có bài viết mẫu hiển thị
+      if (taggedPosts.isEmpty) {
+        taggedPosts.value = _getSampleTaggedPosts();
+        _buildPostMarkers();
+      }
     }
   }
 
   void _buildPostMarkers() {
-    // Xóa marker bài viết cũ, giữ search_result nếu có
-    markers.removeWhere((m) => m.markerId.value.startsWith('post_'));
+    // Xóa marker bài viết cũ, giữ search_result và sos nếu có
+    markers.removeWhere(
+      (m) =>
+          m.key is ValueKey &&
+          (m.key as ValueKey).value.toString().startsWith('post_'),
+    );
 
     for (final post in taggedPosts) {
       final loc = post.location;
@@ -276,37 +406,82 @@ class MapController extends GetxController {
       final displayTag = firstTag.isNotEmpty
           ? '#$firstTag'
           : ((post.hashtags?.isNotEmpty ?? false) ? post.hashtags!.first : '');
+      final tagColor = _colorForTag(firstTag);
 
       markers.add(
-        Marker(
-          markerId: MarkerId('post_${post.id}'),
-          position: LatLng(loc.lat, loc.lng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(_hueForTag(firstTag)),
-          infoWindow: InfoWindow(
-            title: displayTag,
-            snippet: post.userName ?? '',
+        fm.Marker(
+          key: ValueKey('post_${post.id}'),
+          point: LatLng(loc.lat, loc.lng),
+          width: 85,
+          height: 65,
+          child: GestureDetector(
+            onTap: () => _showPostBottomSheet(post),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (displayTag.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      displayTag,
+                      style: TextStyle(
+                        color: tagColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                Icon(
+                  Icons.location_on,
+                  color: tagColor,
+                  size: 36,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          onTap: () => _showPostBottomSheet(post),
         ),
       );
     }
   }
 
-  double _hueForTag(String tag) {
+  Color _colorForTag(String tag) {
     switch (tag) {
       case 'ketxe':
-        return BitmapDescriptor.hueRed;
+        return Colors.red;
       case 'tainan':
-        return BitmapDescriptor.hueOrange;
+        return Colors.deepOrange;
       case 'ngaplutnuoc':
-        return BitmapDescriptor.hueCyan;
+        return Colors.cyan;
       case 'baocaotainan':
-        return BitmapDescriptor.hueYellow;
+        return Colors.amber;
       case 'sos':
-        return BitmapDescriptor.hueMagenta;
+        return Colors.pinkAccent;
       case 'giaothong':
       default:
-        return BitmapDescriptor.hueViolet;
+        return Colors.purple;
     }
   }
 
@@ -330,6 +505,10 @@ class MapController extends GetxController {
       likes: wasLiked ? prevLikes - 1 : prevLikes + 1,
     );
     _syncToTaggedPosts(postRx.value);
+
+    // Bỏ qua gọi API nếu là bài viết mẫu
+    if (p.id!.startsWith('sample_')) return;
+
     try {
       await _postRepository.likePost(p.id!);
     } catch (_) {
@@ -345,6 +524,10 @@ class MapController extends GetxController {
     final wasFollowing = p.isFollowedByCurrentUser ?? false;
     postRx.value = p.copyWith(isFollowedByCurrentUser: !wasFollowing);
     _syncToTaggedPosts(postRx.value);
+
+    // Bỏ qua gọi API nếu là bài viết mẫu
+    if (p.id?.startsWith('sample_') ?? false) return;
+
     try {
       await _followRepository.followUser(userId);
     } catch (_) {
@@ -355,6 +538,13 @@ class MapController extends GetxController {
 
   void _reportPost(TrafficPostModel post) {
     if (post.id == null) return;
+
+    // Bỏ qua gọi API nếu là bài viết mẫu
+    if (post.id!.startsWith('sample_')) {
+      CustomAlert.showSuccess('Đã báo cáo bài viết');
+      return;
+    }
+
     _postRepository
         .reportPost(postId: post.id!, reason: 'Nội dung không phù hợp')
         .then((_) => CustomAlert.showSuccess('Đã báo cáo bài viết'))
@@ -369,8 +559,7 @@ class MapController extends GetxController {
 
   void _addDummyPolyline() {
     polylines.add(
-      Polyline(
-        polylineId: const PolylineId('route_1'),
+      fm.Polyline(
         points: const [
           LatLng(21.028511, 105.804817),
           LatLng(21.029511, 105.805817),
@@ -378,14 +567,18 @@ class MapController extends GetxController {
           LatLng(21.031511, 105.807817),
         ],
         color: Colors.blue,
-        width: 5,
+        strokeWidth: 5.0,
       ),
     );
   }
 
   void _buildSosMarkers() {
-    // 1. Dọn dẹp các marker SOS cũ (giữ lại marker bài viết 'post_')
-    markers.removeWhere((m) => m.markerId.value.startsWith('sos_'));
+    // 1. Dọn dẹp các marker SOS cũ (giữ lại marker bài viết 'post_' và 'search_result')
+    markers.removeWhere(
+      (m) =>
+          m.key is ValueKey &&
+          (m.key as ValueKey).value.toString().startsWith('sos_'),
+    );
 
     // 2. Lấy dữ liệu từ Service
     final sosList = SosStreamService.to.sosList;
@@ -395,15 +588,33 @@ class MapController extends GetxController {
       if (sos.latitude == null || sos.longitude == null) continue;
 
       markers.add(
-        Marker(
-          markerId: MarkerId('sos_${sos.sosId}'),
-          position: LatLng(sos.latitude!, sos.longitude!),
-          
-          // Đặt màu Magenta (Hồng đậm) cho dễ nhận diện
-          icon: BitmapDescriptor.defaultMarkerWithHue(_hueForTag( 'sos' )),
-          
-          // Bấm vào Marker thì đẩy cái Bottom Sheet lên
-          onTap: () => SosBottomSheet.show(sos: sos),
+        fm.Marker(
+          key: ValueKey('sos_${sos.sosId}'),
+          point: LatLng(sos.latitude!, sos.longitude!),
+          width: 44,
+          height: 44,
+          child: GestureDetector(
+            onTap: () => SosBottomSheet.show(sos: sos),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.pinkAccent.shade400,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.pinkAccent.withValues(alpha: 0.6),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.emergency,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+          ),
         ),
       );
     }
