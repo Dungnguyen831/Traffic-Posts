@@ -1,7 +1,7 @@
 import Firebase
 import FirebaseMessaging
 import Flutter
-import GoogleMaps
+// import GoogleMaps
 import UIKit
 import UserNotifications
 
@@ -15,7 +15,7 @@ import UserNotifications
     FirebaseApp.configure()
 
     // Configure Google Maps
-    GMSServices.provideAPIKey("YOUR_GOOGLE_MAPS_API_KEY")
+    // GMSServices.provideAPIKey("YOUR_GOOGLE_MAPS_API_KEY")
 
     // Set FCM messaging delegate
     Messaging.messaging().delegate = self

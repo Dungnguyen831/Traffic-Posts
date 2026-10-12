@@ -43,7 +43,12 @@ dependencies:
   dio: ^5.9.0
   flutter_dotenv: ^6.0.0
   lottie: ^3.3.2
-  google_maps_flutter: ^2.14.0
+  # google_maps_flutter: ^2.14.0
+  # Thêm thư viện cho OSMap
+  flutter_map: ^8.3.2
+  latlong2: ^0.9.1
+  # (Khuyên dùng) Hỗ trợ lướt camera mượt mà:
+  # flutter_map_animations: ^0.8.0
   geolocator: ^14.0.2
   permission_handler: ^12.0.1
   geocoding: ^4.0.0
