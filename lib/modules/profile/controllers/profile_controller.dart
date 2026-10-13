@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -122,8 +123,12 @@ class ProfileController extends GetxController {
       }
 
       if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
-        currentAvatarUrl.value =
-            "${user.avatarUrl}?t=${DateTime.now().millisecondsSinceEpoch}";
+        if (user.avatarUrl!.startsWith('assets/')) {
+          currentAvatarUrl.value = user.avatarUrl!;
+        } else {
+          currentAvatarUrl.value =
+              "${user.avatarUrl}?t=${DateTime.now().millisecondsSinceEpoch}";
+        }
       } else {
         currentAvatarUrl.value = "";
       }
@@ -183,7 +188,7 @@ class ProfileController extends GetxController {
         relativePhone: relativePhoneController.text.trim(),
       );
       File? imageFile;
-      if (selectedImagePath.value.isNotEmpty) {
+      if (!kIsWeb && selectedImagePath.value.isNotEmpty) {
         imageFile = File(selectedImagePath.value);
       }
 

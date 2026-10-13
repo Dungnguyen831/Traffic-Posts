@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -50,6 +51,10 @@ class ProfileView extends GetView<ProfileController> {
                       Obx(() {
                         // 1. Ưu tiên ảnh vừa chọn từ thư viện (Local)
                         if (controller.selectedImagePath.value.isNotEmpty) {
+                          final imgPath = controller.selectedImagePath.value;
+                          final isNetworkOrBlob = kIsWeb ||
+                              imgPath.startsWith('http') ||
+                              imgPath.startsWith('blob:');
                           return Hero(
                             tag: 'user_avatar',
                             child: Container(
@@ -58,9 +63,11 @@ class ProfileView extends GetView<ProfileController> {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 image: DecorationImage(
-                                  image: FileImage(
-                                    File(controller.selectedImagePath.value),
-                                  ),
+                                  image: isNetworkOrBlob
+                                      ? NetworkImage(imgPath)
+                                      : FileImage(
+                                          File(imgPath),
+                                        ) as ImageProvider,
                                   fit: BoxFit.cover,
                                 ),
                                 border: Border.all(
@@ -72,12 +79,33 @@ class ProfileView extends GetView<ProfileController> {
                           );
                         }
 
-                        // 2. Nếu có URL ảnh từ server (Network)
+                        // 2. Nếu có URL ảnh từ assets hoặc server (Network)
                         if (controller.currentAvatarUrl.value.isNotEmpty) {
+                          final avatarPath = controller.currentAvatarUrl.value;
+                          if (avatarPath.startsWith('assets/')) {
+                            return Hero(
+                              tag: 'user_avatar',
+                              child: Container(
+                                width: 100.w,
+                                height: 100.w,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  image: DecorationImage(
+                                    image: AssetImage(avatarPath),
+                                    fit: BoxFit.cover,
+                                  ),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
                           return Hero(
                             tag: 'user_avatar',
                             child: CachedNetworkImage(
-                              imageUrl: controller.currentAvatarUrl.value,
+                              imageUrl: avatarPath,
                               imageBuilder: (context, imageProvider) =>
                                   Container(
                                     width: 100.w,

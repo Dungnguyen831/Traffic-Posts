@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart' hide ServiceStatus;
+import 'package:traffic_app/config/demo_config.dart';
 import 'package:traffic_app/modules/dashboard/controllers/dashboard_controller.dart';
 import 'package:traffic_app/modules/map/controllers/map_controller.dart';
 import 'package:traffic_app/routes/app_pages.dart';
@@ -41,6 +42,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (DemoConfig.isDemoMode) return;
     if (state == AppLifecycleState.resumed) {
       // Re-check when user returns from Settings after granting permission
       checkLocationStatus();
@@ -48,6 +50,12 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> _initLocationMonitoring() async {
+    if (DemoConfig.isDemoMode) {
+      isLocationServiceDisabled.value = false;
+      isLocationPermissionDenied.value = false;
+      locationBannerDismissed.value = true;
+      return;
+    }
     await checkLocationStatus();
     _serviceStatusSubscription = Geolocator.getServiceStatusStream().listen((
       status,
@@ -62,6 +70,12 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   Future<void> checkLocationStatus() async {
+    if (DemoConfig.isDemoMode) {
+      isLocationServiceDisabled.value = false;
+      isLocationPermissionDenied.value = false;
+      locationBannerDismissed.value = true;
+      return;
+    }
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       isLocationServiceDisabled.value = !serviceEnabled;

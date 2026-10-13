@@ -22,7 +22,8 @@ class UserProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = Get.put(UserProfileController());
     final heroTag = Get.arguments?['heroTag']?.toString();
-    final initialAvatarUrl = Get.arguments?['initialAvatarUrl']?.toString();
+    final initialAvatarUrl = Get.arguments?['initialAvatarUrl']?.toString() ??
+        Get.arguments?['initialAvatar']?.toString();
     final initialUserName = Get.arguments?['initialUserName']?.toString();
 
     return Scaffold(
@@ -197,21 +198,40 @@ class UserProfileScreen extends StatelessWidget {
                           'avatar_default_${controller.targetUserId}',
                       child: ClipOval(
                         child: displayAvatarUrl != null
-                            ? CachedNetworkImage(
-                                imageUrl: displayAvatarUrl,
-                                width: 90.w,
-                                height: 90.w,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) =>
-                                    CircularProgressIndicator(
-                                      color: AppTheme.primaryColor,
+                            ? (displayAvatarUrl.startsWith('assets/')
+                                ? Image.asset(
+                                    displayAvatarUrl,
+                                    width: 90.w,
+                                    height: 90.w,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            Container(
+                                      width: 90.w,
+                                      height: 90.w,
+                                      color: Colors.grey[200],
+                                      child: Icon(
+                                        IconlyBroken.profile,
+                                        size: 50.sp,
+                                        color: Colors.grey,
+                                      ),
                                     ),
-                                errorWidget: (context, url, error) => Icon(
-                                  IconlyBroken.profile,
-                                  size: 50.sp,
-                                  color: Colors.grey,
-                                ),
-                              )
+                                  )
+                                : CachedNetworkImage(
+                                    imageUrl: displayAvatarUrl,
+                                    width: 90.w,
+                                    height: 90.w,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) =>
+                                        CircularProgressIndicator(
+                                          color: AppTheme.primaryColor,
+                                        ),
+                                    errorWidget: (context, url, error) => Icon(
+                                      IconlyBroken.profile,
+                                      size: 50.sp,
+                                      color: Colors.grey,
+                                    ),
+                                  ))
                             : Container(
                                 width: 90.w,
                                 height: 90.w,

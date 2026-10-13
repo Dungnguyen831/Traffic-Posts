@@ -62,7 +62,8 @@ class SosStreamView extends GetView<SosStreamController> {
                           vertical: 12.h,
                         ),
                         itemCount: list.length,
-                        separatorBuilder: (_, __) => SizedBox(height: 10.h),
+                        separatorBuilder: (context, index) =>
+                            SizedBox(height: 10.h),
                         itemBuilder: (_, i) => _SosCard(sos: list[i]),
                       ),
                     ),
@@ -204,7 +205,7 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) => Opacity(
+      builder: (context, child) => Opacity(
         opacity: widget.pulse ? _anim.value : 1.0,
         child: Container(
           width: 8.r,

@@ -3,11 +3,12 @@ import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../../config/demo_config.dart';
+import '../../../data/repositories/sos_repository.dart';
+import '../../../data/services/sos_stream_service.dart';
 import '../../../services/storage_service.dart';
 import '../../../widgets/custom_alert.dart';
-import '../../../data/repositories/sos_repository.dart';
-import '../views/sos_active_screen.dart'; 
-import '../../../data/services/sos_stream_service.dart';
+import '../views/sos_active_screen.dart';
 
 class EmergencyController extends GetxController {
   var selectedOption = 0.obs;
@@ -47,6 +48,11 @@ class EmergencyController extends GetxController {
 
   // Hàm xử lý gọi điện dùng chung
   Future<void> _makePhoneCall(String phoneNumber) async {
+    if (DemoConfig.isDemoMode) {
+      CustomAlert.showSuccess('Mô phỏng cuộc gọi khẩn cấp đến: $phoneNumber');
+      return;
+    }
+
     final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
 
     try {
@@ -94,18 +100,27 @@ class EmergencyController extends GetxController {
     try {
       isLoading.value = true;
       
-      // Lấy tọa độ
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high
-      );
+      // Lấy tọa độ (Demo Mode không yêu cầu quyền GPS)
+      double lat = DemoConfig.currentSimulatedPosition.latitude;
+      double lng = DemoConfig.currentSimulatedPosition.longitude;
+
+      if (!DemoConfig.isDemoMode) {
+        Position position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+          ),
+        );
+        lat = position.latitude;
+        lng = position.longitude;
+      }
 
       // Lấy số điện thoại chuẩn từ Storage
       final phoneNumber = StorageService.to.getPhoneNumber() ?? 
                           StorageService.to.getUsername() ?? '';
 
       final result = await _sosRepo.createSosAlert(
-        lat: position.latitude,
-        lng: position.longitude,
+        lat: lat,
+        lng: lng,
         note: note,
         phoneNumber: phoneNumber,
       );
