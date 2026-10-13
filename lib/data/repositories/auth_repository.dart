@@ -1,16 +1,22 @@
 import 'package:dio/dio.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 
+import '../../config/demo_config.dart';
 import '../models/login_request.dart';
 import '../models/login_response.dart';
 import '../models/signup_request.dart';
 import '../services/api_service.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 class AuthRepository {
   final ApiService _apiService = ApiService();
   final FirebaseMessaging firebaseMessaging = FirebaseMessaging.instance;
 
   Future<void> signup(SignupRequest request) async {
+    if (DemoConfig.isDemoMode) {
+      _apiService.setToken('demo_token');
+      return;
+    }
     try {
       final response = await _apiService.dio.post(
         '/auth/signup',
@@ -40,8 +46,21 @@ class AuthRepository {
   }
 
   Future<LoginResponse> login(LoginRequest request) async {
+    if (DemoConfig.isDemoMode) {
+      const demoToken = 'demo_token_web';
+      _apiService.setToken(demoToken);
+      return LoginResponse(
+        id: 1,
+        username: request.username.isNotEmpty ? request.username : 'demouser',
+        fullname: 'Nguyễn Anh Dũng',
+        province: 'Hà Nội',
+        relativePhone: '0988888888',
+        phoneNumber: '0983168888',
+        token: demoToken,
+      );
+    }
     try {
-      String? deviceToken = await _getDeviceToken(); 
+      String? deviceToken = kIsWeb ? null : await _getDeviceToken(); 
       
       final Map<String, dynamic> requestData = request.toJson();
       
@@ -79,6 +98,7 @@ class AuthRepository {
   }
 
   Future<String?> _getDeviceToken() async {
+    if (kIsWeb) return null;
     try {
       // Xin quyền (Quan trọng cho iOS)
       await firebaseMessaging.requestPermission(
@@ -88,10 +108,8 @@ class AuthRepository {
       );
       
       String? token = await firebaseMessaging.getToken();
-      print("🔔 FCM Device Token: $token"); 
       return token;
     } catch (e) {
-      print("❌ Lỗi lấy Device Token: $e");
       return null; 
     }
   }

@@ -93,8 +93,10 @@ class TrafficPostModel {
   String? getFullImageUrl(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) return null;
 
-    // Nếu đã là URL đầy đủ, return luôn
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    // Nếu đã là URL đầy đủ hoặc đường dẫn assets, return luôn
+    if (imageUrl.startsWith('http://') ||
+        imageUrl.startsWith('https://') ||
+        imageUrl.startsWith('assets/')) {
       return imageUrl;
     }
 
@@ -113,8 +115,10 @@ class TrafficPostModel {
   String? get fullAvatarUrl {
     if (avatarUrl == null || avatarUrl?.isEmpty == true) return null;
 
-    // Nếu đã là URL đầy đủ, return luôn
-    if (avatarUrl!.startsWith('http://') || avatarUrl!.startsWith('https://')) {
+    // Nếu đã là URL đầy đủ hoặc đường dẫn assets, return luôn
+    if (avatarUrl!.startsWith('http://') ||
+        avatarUrl!.startsWith('https://') ||
+        avatarUrl!.startsWith('assets/')) {
       return avatarUrl;
     }
 

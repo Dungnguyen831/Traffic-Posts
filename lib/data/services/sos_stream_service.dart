@@ -8,6 +8,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:traffic_app/data/repositories/sos_repository.dart';
 
+import '../../config/demo_config.dart';
 import '../../services/storage_service.dart';
 import '../models/sos_model.dart';
 
@@ -60,9 +61,17 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
-    _listenConnectivity();
     debugPrint('[SOS-SSE] Service khởi động');
 
+    // Nếu chạy Web Demo: Ngắt kết nối SSE/HttpClient thật, dùng dữ liệu mô phỏng
+    if (DemoConfig.isDemoMode) {
+      debugPrint('[SOS-SSE] 🚀 Demo Mode: Dùng dữ liệu và stream mô phỏng, ngắt kết nối backend thật');
+      connectionStatus.value = SosConnectionStatus.connected;
+      sosList.assignAll(DemoConfig.getInitialSampleSosList());
+      return;
+    }
+
+    _listenConnectivity();
     _fetchExistingSos(); 
     connect();
   }
@@ -81,6 +90,7 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (DemoConfig.isDemoMode) return;
     if (state == AppLifecycleState.resumed) {
       // App về foreground
       _appInForeground = true;
@@ -144,6 +154,10 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
   /// Khởi động kết nối (reset retry count)
   void connect() {
     if (_disposed) return;
+    if (DemoConfig.isDemoMode) {
+      connectionStatus.value = SosConnectionStatus.connected;
+      return;
+    }
     _retryCount = 0;
     _startSse();
   }

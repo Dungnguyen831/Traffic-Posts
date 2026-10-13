@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 
+import '../../config/demo_config.dart';
 import '../../routes/app_pages.dart';
 import '../../services/storage_service.dart';
 import 'network_check_interceptor.dart';
@@ -24,8 +26,25 @@ class ApiService {
       ),
     );
 
-    // Kiểm tra mạng trước mọi request — tự chờ và retry khi có lại mạng
-    _dio.interceptors.add(NetworkCheckInterceptor());
+    // Ở chế độ Demo (Web): Mock chặn mọi request ra backend để tránh lỗi CORS và mất kết nối server
+    if (DemoConfig.isDemoMode) {
+      _dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            return handler.resolve(
+              Response(
+                requestOptions: options,
+                data: {'success': true, 'data': null, 'message': 'Demo Mode OK'},
+                statusCode: 200,
+              ),
+            );
+          },
+        ),
+      );
+    } else {
+      // Kiểm tra mạng trước mọi request — tự chờ và retry khi có lại mạng
+      _dio.interceptors.add(NetworkCheckInterceptor());
+    }
 
     _dio.interceptors.add(
       InterceptorsWrapper(
@@ -117,7 +136,7 @@ class ApiService {
         onRequest: (options, handler) {
           // Gắn cờ thời gian bắt đầu gọi API
           options.extra['startTime'] = DateTime.now().millisecondsSinceEpoch;
-          print('🚀 [API START] ${options.method} ${options.uri}');
+          debugPrint('🚀 [API START] ${options.method} ${options.uri}');
           return handler.next(options);
         },
         onResponse: (response, handler) {
@@ -126,7 +145,7 @@ class ApiService {
           final int endTime = DateTime.now().millisecondsSinceEpoch;
           final int duration = endTime - startTime;
           
-          print('✅ [API DONE] ${response.requestOptions.method} ${response.requestOptions.uri} ⏳ ${duration}ms');
+          debugPrint('✅ [API DONE] ${response.requestOptions.method} ${response.requestOptions.uri} ⏳ ${duration}ms');
           return handler.next(response);
         },
         onError: (DioException e, handler) {
@@ -134,7 +153,7 @@ class ApiService {
           final int endTime = DateTime.now().millisecondsSinceEpoch;
           final int duration = endTime - startTime;
           
-          print('❌ [API ERROR] ${e.requestOptions.method} ${e.requestOptions.uri} ⏳ ${duration}ms');
+          debugPrint('❌ [API ERROR] ${e.requestOptions.method} ${e.requestOptions.uri} ⏳ ${duration}ms');
           return handler.next(e);
         },
       ),

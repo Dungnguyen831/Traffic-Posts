@@ -3,17 +3,42 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
+import '../../config/demo_config.dart';
+import '../models/location_model.dart';
 import '../models/traffic_post_model.dart';
 import '../services/api_service.dart';
 
 class TrafficPostRepository {
   final ApiService _apiService = ApiService();
+  static final List<TrafficPostModel> _demoPosts = DemoConfig.getInitialSamplePosts();
+
+  static void addDemoPost(TrafficPostModel post) {
+    if (!_demoPosts.any((p) => p.id == post.id)) {
+      _demoPosts.insert(0, post);
+    }
+  }
+
   Future<List<TrafficPostModel>> getPosts({
     required String location,
     int page = 0,
     int size = 10,
     String? keyword,
   }) async {
+    if (DemoConfig.isDemoMode) {
+      final all = <TrafficPostModel>[..._demoPosts];
+      if (keyword != null && keyword.isNotEmpty) {
+        final kw = keyword.toLowerCase();
+        return all.where((p) {
+          final contentMatch = p.content?.toLowerCase().contains(kw) ?? false;
+          final tagMatch = p.hashtags?.any((t) => t.toLowerCase().contains(kw)) ?? false;
+          final addrMatch =
+              p.location?.address.toLowerCase().contains(kw) ?? false;
+          return contentMatch || tagMatch || addrMatch;
+        }).toList();
+      }
+      return all;
+    }
+
     try {
       final queryParams = <String, dynamic>{'page': page, 'size': size};
       if (keyword != null && keyword.isNotEmpty) {
@@ -78,6 +103,24 @@ class TrafficPostRepository {
     String? filePath,
     void Function(int sent, int total)? onSendProgress,
   }) async {
+    if (DemoConfig.isDemoMode) {
+      final newPost = TrafficPostModel(
+        id: 'post_demo_${DateTime.now().millisecondsSinceEpoch}',
+        userId: '1',
+        userName: 'Demo User (Web)',
+        content: content,
+        type: type,
+        hashtags: hashtags,
+        location: LocationModel(lat: lat, lng: lng, address: address),
+        status: status,
+        likes: 0,
+        isLiked: false,
+        timestamp: DateTime.now(),
+      );
+      _demoPosts.insert(0, newPost);
+      return newPost;
+    }
+
     try {
       // Tạo JSON object cho TrafficPost
       final trafficPostJson = {
@@ -181,6 +224,7 @@ class TrafficPostRepository {
     required String postId,
     required String reason,
   }) async {
+    if (DemoConfig.isDemoMode) return;
     try {
       await _apiService.dio.post(
         '/PostReport/$postId/report',
@@ -198,6 +242,7 @@ class TrafficPostRepository {
 
   /// Like / Unlike bài viết (toggle - cùng 1 endpoint)
   Future<void> likePost(String postId) async {
+    if (DemoConfig.isDemoMode) return;
     try {
       await _apiService.dio.post('/TrafficPost/$postId/like');
     } on DioException catch (e) {
@@ -212,6 +257,10 @@ class TrafficPostRepository {
 
   /// Xóa bài viết
   Future<void> deletePost(String postId) async {
+    if (DemoConfig.isDemoMode) {
+      _demoPosts.removeWhere((p) => p.id == postId);
+      return;
+    }
     try {
       final response = await _apiService.dio.delete('/TrafficPost/$postId');
 

@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
+import '../../config/demo_config.dart';
+import '../../services/storage_service.dart';
 import '../models/profile_request.dart';
 import '../services/api_service.dart';
 import '../../data/models/user_info_model.dart';
@@ -14,6 +16,17 @@ class UserRepository {
 
   // 1. Lấy thông tin (GET)
   Future<ProfileRequest> getProfile() async {
+    if (DemoConfig.isDemoMode) {
+      final storage = StorageService.to;
+      return ProfileRequest(
+        fullname: storage.getFullName() ?? 'Nguyễn Anh Dũng',
+        email: 'dung.nguyen@flowly.vn',
+        phoneNumber: storage.getPhoneNumber() ?? '0983168888',
+        province: storage.getProvince() ?? 'Hà Nội',
+        relativePhone: storage.getRelativePhone() ?? '0988888888',
+        avatarUrl: DemoConfig.demoUserAvatar,
+      );
+    }
     try {
       final response = await _apiService.dio.get('/users/profile');
 
@@ -35,6 +48,15 @@ class UserRepository {
     File? avatarFile, {
     void Function(int sent, int total)? onSendProgress,
   }) async {
+    if (DemoConfig.isDemoMode) {
+      await StorageService.to.saveUserInfo(
+        fullname: user.fullname,
+        province: user.province,
+        relativePhone: user.relativePhone,
+        phoneNumber: user.phoneNumber,
+      );
+      return;
+    }
     try {
       String jsonProfile = jsonEncode(user.toJson());
       final Map<String, dynamic> formDataMap = {
@@ -74,6 +96,20 @@ class UserRepository {
     int page = 0, // ✅ KHAI BÁO THÊM THAM SỐ PAGE
     int size = 10, // ✅ KHAI BÁO THÊM THAM SỐ SIZE
   }) async {
+    if (DemoConfig.isDemoMode) {
+      final storage = StorageService.to;
+      return {
+        'userInfo': UserInfoModel(
+          id: 1,
+          fullname: storage.getFullName() ?? 'Nguyễn Anh Dũng',
+          avatarUrl: DemoConfig.demoUserAvatar,
+          follow: false,
+          followersCount: 128,
+          followingsCount: 45,
+        ),
+        'posts': DemoConfig.getInitialSamplePosts(),
+      };
+    }
     try {
       final response = await _apiService.dio.get(
         '/users/$userId/profile',

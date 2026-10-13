@@ -45,8 +45,10 @@ class UserInfoModel {
   String? get fullAvatarUrl {
     if (avatarUrl == null || avatarUrl!.isEmpty) return null;
 
-    // Nếu Backend đã trả về URL đầy đủ (chứa http/https), thì dùng luôn
-    if (avatarUrl!.startsWith('http://') || avatarUrl!.startsWith('https://')) {
+    // Nếu Backend đã trả về URL đầy đủ (chứa http/https) hoặc đường dẫn assets, thì dùng luôn
+    if (avatarUrl!.startsWith('http://') ||
+        avatarUrl!.startsWith('https://') ||
+        avatarUrl!.startsWith('assets/')) {
       return avatarUrl;
     }
 

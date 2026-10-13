@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../../config/demo_config.dart';
 import '../services/api_service.dart';
 
 class FollowRepository {
@@ -7,6 +8,7 @@ class FollowRepository {
 
   /// Follow / Unfollow user (toggle – cùng 1 endpoint)
   Future<void> followUser(int userId) async {
+    if (DemoConfig.isDemoMode) return;
     try {
       await _apiService.dio.post('/follow/$userId');
     } on DioException catch (e) {
