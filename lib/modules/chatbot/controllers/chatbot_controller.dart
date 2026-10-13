@@ -3,6 +3,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:googleai_dart/googleai_dart.dart';
 
+import '../../../config/demo_config.dart';
+
 /// Đại diện cho một tin nhắn trong cuộc hội thoại.
 class ChatMessage {
   final String id;
@@ -117,6 +119,10 @@ Luôn ưu tiên:
     if (trimmed.isEmpty || isTyping.value) return;
 
     if (!_hasApiKey) {
+      if (DemoConfig.isDemoMode) {
+        _handleSimulatedResponse(trimmed);
+        return;
+      }
       Get.snackbar(
         'chatbot_config_error'.tr,
         'chatbot_config_error_message'.tr,
@@ -214,6 +220,85 @@ Luôn ưu tiên:
       isTyping.value = false;
       _scrollToBottom();
     }
+  }
+
+  /// Trả lời mô phỏng thông minh cho Web Demo không cần API Key bên ngoài
+  Future<void> _handleSimulatedResponse(String text) async {
+    messages.add(
+      ChatMessage(
+        id: '${DateTime.now().millisecondsSinceEpoch}_user',
+        text: text,
+        isUser: true,
+        timestamp: DateTime.now(),
+      ),
+    );
+    textController.clear();
+    _scrollToBottom();
+
+    isTyping.value = true;
+    streamingText.value = '';
+
+    String reply;
+    final lower = text.toLowerCase();
+    if (lower.contains('phạt') ||
+        lower.contains('đèn đỏ') ||
+        lower.contains('tốc độ') ||
+        lower.contains('lỗi')) {
+      reply =
+          'Theo Nghị định 100/2019/NĐ-CP (sửa đổi, bổ sung bởi NĐ 123/2021/NĐ-CP):\n'
+          '• Vượt đèn đỏ: Xe máy phạt 800.000đ - 1.000.000đ; Ô tô phạt 4.000.000đ - 6.000.000đ (tước GPLX 1-3 tháng).\n'
+          '• Quá tốc độ: Tùy mức vượt từ 5km/h đến trên 35km/h, phạt từ 800.000đ đến 12.000.000đ đối với ô tô.\n'
+          '• Không đội MBH: Phạt 400.000đ - 600.000đ.\n'
+          '👉 Bạn có thể dùng tính năng "Tra cứu phạt nguội" trên màn hình chính để kiểm tra biển số xe.';
+    } else if (lower.contains('tắc') ||
+        lower.contains('ùn') ||
+        lower.contains('đường') ||
+        lower.contains('kẹt')) {
+      reply =
+          'Tình hình giao thông hiện tại (Khu vực trung tâm Kim Mã - Cầu Giấy):\n'
+          '• Trục Kim Mã - Liễu Giai: Lưu lượng đông, các phương tiện di chuyển chậm.\n'
+          '• Đường Cầu Giấy: Giao thông ổn định, tốc độ trung bình 35 km/h.\n'
+          '• Khuyến nghị: Bạn có thể mở tab Bản đồ để theo dõi các sự kiện ùn tắc và cảnh báo thời gian thực.';
+    } else if (lower.contains('cứu hộ') ||
+        lower.contains('sos') ||
+        lower.contains('khẩn cấp') ||
+        lower.contains('tai nạn')) {
+      reply =
+          'Trong trường hợp khẩn cấp trên đường:\n'
+          '1. Gọi ngay 115 (Cứu thương) hoặc 113 (Cảnh sát giao thông).\n'
+          '2. Mở tab Cứu hộ (SOS) trên app và bấm "Phát tín hiệu cứu hộ" để gửi vị trí hiện tại kèm số liên hệ người thân.\n'
+          '3. Bật đèn khẩn cấp (hazard) và đặt cảnh báo phản quang cách đuôi xe tối thiểu 50m.';
+    } else {
+      reply =
+          'Xin chào! Tôi là Trợ lý giao thông ảo Traffic App (Phiên bản Web Demo).\n\n'
+          'Tôi có thể hỗ trợ bạn:\n'
+          '• Tra cứu quy định xử phạt vi phạm giao thông đường bộ\n'
+          '• Cập nhật thông tin điểm ùn tắc, ngập lụt tại khu vực trung tâm\n'
+          '• Hướng dẫn cách xử lý sự cố va chạm và phát tín hiệu SOS cứu hộ.\n\n'
+          'Hãy thử đặt câu hỏi như: "Mức phạt vượt đèn đỏ xe máy?", "Đường Kim Mã có tắc không?" nhé!';
+    }
+
+    // Mô phỏng hiệu ứng typing gõ chữ mượt mà
+    final words = reply.split(' ');
+    String current = '';
+    for (int i = 0; i < words.length; i++) {
+      await Future.delayed(const Duration(milliseconds: 25));
+      current += (i == 0 ? '' : ' ') + words[i];
+      streamingText.value = current;
+      _scrollToBottom();
+    }
+
+    messages.add(
+      ChatMessage(
+        id: '${DateTime.now().millisecondsSinceEpoch}_ai',
+        text: reply,
+        isUser: false,
+        timestamp: DateTime.now(),
+      ),
+    );
+    isTyping.value = false;
+    streamingText.value = '';
+    _scrollToBottom();
   }
 
   void clearChat() {

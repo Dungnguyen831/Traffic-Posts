@@ -26,7 +26,17 @@ class CameraImageSection extends GetView<CameraController> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(32.r),
           child: Obx(() {
-            if (controller.hasImage.value && controller.imageFile != null) {
+            if (controller.hasImage.value) {
+              final path = controller.imagePath.value;
+              if (path.startsWith('http') || path.startsWith('blob:') || controller.imageFile == null) {
+                return Image.network(
+                  path,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Center(
+                    child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                  ),
+                );
+              }
               return Image.file(controller.imageFile!, fit: BoxFit.cover);
             }
             return Container(

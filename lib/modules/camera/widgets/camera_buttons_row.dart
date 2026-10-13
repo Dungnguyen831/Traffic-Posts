@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
 import 'package:traffic_app/theme/app_theme.dart';
 
+import '../../../config/demo_config.dart';
 import '../controllers/camera_controller.dart';
 
 class CameraButtonsRow extends GetView<CameraController> {
@@ -19,6 +20,27 @@ class CameraButtonsRow extends GetView<CameraController> {
         child: Stack(
           alignment: Alignment.center,
           children: [
+            // Quick Demo sample image button for Web Demo
+            if (!controller.hasImage.value && DemoConfig.isDemoMode)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: controller.selectDemoSampleImage,
+                  icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                  label: const Text(
+                    'Ảnh mẫu demo',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.primaryColor,
+                    backgroundColor: AppTheme.primaryColor.withOpacity(0.08),
+                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20.r),
+                    ),
+                  ),
+                ),
+              ),
             // Camera / Send icon (centered)
             GestureDetector(
               onTap: controller.onActionTap,

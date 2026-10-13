@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
@@ -7,6 +9,7 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../../../config/demo_config.dart';
 import '../../../data/repositories/traffic_post_repository.dart';
 import '../../../services/image_picker_service.dart';
 import '../../../widgets/custom_alert.dart';
@@ -61,6 +64,14 @@ class CameraController extends GetxController {
   }
 
   Future<void> _getCurrentLocation() async {
+    // Không yêu cầu popup cấp quyền GPS trình duyệt trên Web Demo
+    if (DemoConfig.isDemoMode) {
+      currentLat.value = DemoConfig.currentSimulatedPosition.latitude;
+      currentLng.value = DemoConfig.currentSimulatedPosition.longitude;
+      location.value = DemoConfig.defaultAddress;
+      return;
+    }
+
     try {
       // Kiểm tra dịch vụ vị trí có được bật không
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -213,8 +224,23 @@ class CameraController extends GetxController {
     contentController.clear();
     selectedHashtags.clear();
 
-    // Upload trong isolate
+    // Upload trong isolate / giả lập demo
     _uploadInIsolate(postData, homeController, imagePathTemp);
+  }
+
+  /// Chọn nhanh ảnh giao thông mẫu để kiểm thử trên Web Demo
+  void selectDemoSampleImage() {
+    imagePath.value =
+        'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800';
+    hasImage.value = true;
+    if (contentController.text.trim().isEmpty) {
+      contentController.text =
+          'Mật độ phương tiện tăng cao giờ cao điểm, các phương tiện di chuyển chậm.';
+    }
+    if (selectedHashtags.isEmpty) {
+      selectedHashtags.add('ketxe');
+    }
+    _updateTime();
   }
 
   void _uploadInIsolate(
@@ -222,6 +248,47 @@ class CameraController extends GetxController {
     HomeController homeController,
     String imagePathTemp,
   ) {
+    if (DemoConfig.isDemoMode) {
+      // Giả lập tiến trình upload mượt mà trong chế độ Demo Web
+      int currentTick = 0;
+      Timer.periodic(const Duration(milliseconds: 200), (timer) {
+        currentTick++;
+        final progress = (currentTick * 0.25).clamp(0.0, 1.0);
+        homeController.updateUploadProgress(progress);
+
+        if (progress >= 1.0) {
+          timer.cancel();
+          _repository
+              .createPost(
+                type: postData['type'] as String,
+                content: postData['content'] as String,
+                lat: postData['lat'] as double,
+                lng: postData['lng'] as double,
+                address: postData['address'] as String,
+                hashtags: postData['hashtags'] as List<String>,
+                status: postData['status'] as String,
+                filePath: imagePathTemp,
+              )
+              .then((post) {
+                homeController.completeUpload();
+                final dashboardController = Get.find<DashboardController>();
+                if (homeController.currentIndex.value == 0) {
+                  dashboardController.prependPost(post);
+                }
+                CustomAlert.showSuccess('camera_post_success'.tr);
+              })
+              .catchError((error) {
+                homeController.cancelUpload();
+                CustomAlert.showError(
+                  '${'camera_cannot_post'.tr}: $error',
+                  duration: const Duration(seconds: 3),
+                );
+              });
+        }
+      });
+      return;
+    }
+
     _repository
         .createPost(
           type: postData['type'] as String,
@@ -259,6 +326,7 @@ class CameraController extends GetxController {
   }
 
   File? get imageFile {
+    if (kIsWeb) return null;
     if (imagePath.value.isEmpty) return null;
     return File(imagePath.value);
   }
