@@ -73,22 +73,34 @@ class PostItem extends StatelessWidget {
               borderRadius: BorderRadius.circular(12.r),
               child:
                   post.fullImageUrls != null && post.fullImageUrls!.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: post.fullImageUrls!.first,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 800,
-                      fadeInDuration: Duration.zero,
-                      fadeOutDuration: Duration.zero,
-                      placeholder: (context, url) =>
-                          const Center(child: LoadingWidget()),
-                      errorWidget: (context, url, error) => Center(
-                        child: Icon(
-                          IconlyBroken.image_2,
-                          size: 48.w,
-                          color: Colors.grey[400],
-                        ),
-                      ),
-                    )
+                  ? (post.fullImageUrls!.first.startsWith('assets/')
+                      ? Image.asset(
+                          post.fullImageUrls!.first,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Center(
+                            child: Icon(
+                              IconlyBroken.image_2,
+                              size: 48.w,
+                              color: Colors.grey[400],
+                            ),
+                          ),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: post.fullImageUrls!.first,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 800,
+                          fadeInDuration: Duration.zero,
+                          fadeOutDuration: Duration.zero,
+                          placeholder: (context, url) =>
+                              const Center(child: LoadingWidget()),
+                          errorWidget: (context, url, error) => Center(
+                            child: Icon(
+                              IconlyBroken.image_2,
+                              size: 48.w,
+                              color: Colors.grey[400],
+                            ),
+                          ),
+                        ))
                   : Center(
                       child: Icon(
                         IconlyBroken.location,
@@ -106,32 +118,49 @@ class PostItem extends StatelessWidget {
 
             final avatarWidget = ClipOval(
               child: post.fullAvatarUrl != null
-                  ? CachedNetworkImage(
-                      imageUrl: post.fullAvatarUrl!,
-                      width: 40.w,
-                      height: 40.w,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 120,
-                      memCacheHeight: 120,
-                      fadeInDuration: Duration.zero,
-                      fadeOutDuration: Duration.zero,
-                      placeholder: (context, url) => Container(
-                        width: 40.w,
-                        height: 40.w,
-                        color: Colors.grey[300],
-                        child: LoadingWidget(width: 40.w, height: 40.w),
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        width: 40.w,
-                        height: 40.w,
-                        color: Colors.grey[300],
-                        child: Icon(
-                          IconlyBroken.profile,
-                          size: 24.w,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    )
+                  ? (post.fullAvatarUrl!.startsWith('assets/')
+                      ? Image.asset(
+                          post.fullAvatarUrl!,
+                          width: 40.w,
+                          height: 40.w,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 40.w,
+                            height: 40.w,
+                            color: Colors.grey[300],
+                            child: Icon(
+                              IconlyBroken.profile,
+                              size: 24.w,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: post.fullAvatarUrl!,
+                          width: 40.w,
+                          height: 40.w,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 120,
+                          memCacheHeight: 120,
+                          fadeInDuration: Duration.zero,
+                          fadeOutDuration: Duration.zero,
+                          placeholder: (context, url) => Container(
+                            width: 40.w,
+                            height: 40.w,
+                            color: Colors.grey[300],
+                            child: LoadingWidget(width: 40.w, height: 40.w),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            width: 40.w,
+                            height: 40.w,
+                            color: Colors.grey[300],
+                            child: Icon(
+                              IconlyBroken.profile,
+                              size: 24.w,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ))
                   : Container(
                       width: 40.w,
                       height: 40.w,

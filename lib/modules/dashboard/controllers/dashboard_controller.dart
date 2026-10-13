@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart'
@@ -11,6 +12,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:traffic_app/widgets/custom_alert.dart';
 import 'package:traffic_app/widgets/custom_dialog.dart';
 
+import '../../../config/demo_config.dart';
 import '../../../data/models/traffic_post_model.dart';
 import '../../../data/repositories/follow_repository.dart';
 import '../../../data/repositories/traffic_post_repository.dart';
@@ -133,7 +135,7 @@ class DashboardController extends GetxController {
     CustomDialog.showConfirm(
       context: Get.context!,
       title: 'dashboard_voice_permission_title'.tr,
-      message: Platform.isIOS
+      message: (!kIsWeb && Platform.isIOS)
           ? 'dashboard_voice_permission_message_ios'.tr
           : 'dashboard_voice_permission_message'.tr,
       confirmText: 'dashboard_voice_open_settings'.tr,
@@ -148,6 +150,12 @@ class DashboardController extends GetxController {
 
   /// Bắt đầu / dừng tìm kiếm bằng giọng nói
   Future<void> openVoiceSearch() async {
+    if (kIsWeb || DemoConfig.isDemoMode) {
+      searchController.text = 'Kẹt xe Cầu Giấy';
+      CustomAlert.showSuccess('Mô phỏng giọng nói: "Kẹt xe Cầu Giấy"');
+      return;
+    }
+
     // Xin quyền và khởi tạo trước khi bật UI
     _speechToText = SpeechToText();
     _speechAvailable = await _speechToText.initialize(onError: _onSpeechError);
