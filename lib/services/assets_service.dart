@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:lottie/lottie.dart';
 
@@ -14,7 +14,8 @@ class AssetsService extends GetxService {
   final Rx<LottieComposition?> closeComposition = Rx<LottieComposition?>(null);
 
   Future<void> init() async {
-    // Preload critical animations
+    // Trên Web, không block main bằng việc load đồng bộ Lottie
+    if (kIsWeb) return;
     try {
       notFoundComposition.value = await AssetLottie(
         'assets/animations/404_not_found.json',
