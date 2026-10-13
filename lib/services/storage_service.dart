@@ -77,7 +77,8 @@ class StorageService extends GetxService {
 
   int? getUserId() => _prefs.getInt('user_id');
 
-  String? getFullName() => _prefs.getString('user_fullName');
+  String? getFullName() =>
+      _prefs.getString('user_fullname') ?? _prefs.getString('user_fullName');
 
   String? getProvince() => _prefs.getString('user_province');
 

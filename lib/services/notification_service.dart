@@ -1,7 +1,10 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
+
+import '../config/demo_config.dart';
 
 /// Background message handler — phải là top-level function
 @pragma('vm:entry-point')
@@ -15,47 +18,60 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class NotificationService extends GetxService {
   static NotificationService get to => Get.find();
 
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  FirebaseMessaging? _messaging;
   final RxString fcmToken = ''.obs;
 
   Future<NotificationService> init() async {
-    // Xin quyền notification (iOS)
-    final settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
-    debugPrint('🔔 Notification permission: ${settings.authorizationStatus}');
+    if (kIsWeb || DemoConfig.isDemoMode) {
+      fcmToken.value = 'demo_web_fcm_token';
+      debugPrint('🔔 [NotificationService] Web Demo Mode: FCM bypassed.');
+      return this;
+    }
 
-    // Lấy FCM token — quan trọng để test trên Simulator
-    await _refreshToken();
+    try {
+      _messaging = FirebaseMessaging.instance;
 
-    // Lắng nghe token refresh
-    _messaging.onTokenRefresh.listen((newToken) {
-      fcmToken.value = newToken;
-      debugPrint('🔄 FCM Token refreshed: $newToken');
-    });
+      // Xin quyền notification (iOS)
+      final settings = await _messaging!.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      debugPrint('🔔 Notification permission: ${settings.authorizationStatus}');
 
-    // Foreground message handler (app đang mở)
-    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+      // Lấy FCM token — quan trọng để test trên Simulator
+      await _refreshToken();
 
-    // App mở từ notification (background → foreground)
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
+      // Lắng nghe token refresh
+      _messaging!.onTokenRefresh.listen((newToken) {
+        fcmToken.value = newToken;
+        debugPrint('🔄 FCM Token refreshed: $newToken');
+      });
 
-    // App mở từ terminated state qua notification
-    final initialMessage = await _messaging.getInitialMessage();
-    if (initialMessage != null) {
-      debugPrint('🚀 App opened from terminated via notification');
-      _handleMessageOpenedApp(initialMessage);
+      // Foreground message handler (app đang mở)
+      FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+
+      // App mở từ notification (background → foreground)
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
+
+      // App mở từ terminated state qua notification
+      final initialMessage = await _messaging!.getInitialMessage();
+      if (initialMessage != null) {
+        debugPrint('🚀 App opened from terminated via notification');
+        _handleMessageOpenedApp(initialMessage);
+      }
+    } catch (e) {
+      debugPrint('NotificationService init error: $e');
     }
 
     return this;
   }
 
   Future<void> _refreshToken() async {
+    if (kIsWeb || _messaging == null) return;
     try {
-      final token = await _messaging.getToken();
+      final token = await _messaging?.getToken();
       if (token != null) {
         fcmToken.value = token;
         debugPrint('✅ FCM Token (dùng để test trên Firebase Console):');

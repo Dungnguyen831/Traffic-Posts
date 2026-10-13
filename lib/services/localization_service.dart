@@ -17,13 +17,21 @@ class LocalizationService extends Translations {
   Map<String, Map<String, String>> get keys => _keys;
 
   static Future<void> init() async {
-    final en = await rootBundle.loadString('assets/json/locales/en_US.json');
-    final vi = await rootBundle.loadString('assets/json/locales/vi_VN.json');
+    try {
+      final en = await rootBundle.loadString('assets/json/locales/en_US.json');
+      final vi = await rootBundle.loadString('assets/json/locales/vi_VN.json');
 
-    _keys = {
-      'en_US': Map<String, String>.from(json.decode(en)),
-      'vi_VN': Map<String, String>.from(json.decode(vi)),
-    };
+      _keys = {
+        'en_US': Map<String, String>.from(json.decode(en)),
+        'vi_VN': Map<String, String>.from(json.decode(vi)),
+      };
+    } catch (e) {
+      debugPrint('LocalizationService init warning: $e');
+      _keys = {
+        'en_US': {},
+        'vi_VN': {},
+      };
+    }
   }
 
   static void changeLocale(String lang) {
