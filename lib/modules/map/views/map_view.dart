@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
 import 'package:traffic_app/theme/app_theme.dart';
 
+import '../../../config/demo_config.dart';
 import '../controllers/map_controller.dart';
 
 class MapView extends GetView<MapController> {
@@ -138,17 +139,86 @@ class MapView extends GetView<MapController> {
             ),
           ),
 
-          // Control Buttons
+          // Demo Mode Status Pill Badge (Web Demo)
+          if (DemoConfig.isDemoMode)
+            Positioned(
+              top: 105,
+              left: 20,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.75),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.greenAccent.withOpacity(0.6),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.greenAccent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Web Demo • Vị trí cố định',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Control Buttons (Thao tác mượt mà bằng click chuột)
           Positioned(
-            right: 10,
-            bottom: 90,
+            right: 12,
+            bottom: 95,
             child: Column(
               children: [
+                // Zoom In Button (+)
+                FloatingActionButton.small(
+                  heroTag: 'zoom_in',
+                  onPressed: controller.zoomIn,
+                  backgroundColor: AppTheme.backgroundColor,
+                  tooltip: 'Phóng to bản đồ',
+                  child: const Icon(Icons.add, color: Colors.black87),
+                ),
+                const SizedBox(height: 8),
+
+                // Zoom Out Button (-)
+                FloatingActionButton.small(
+                  heroTag: 'zoom_out',
+                  onPressed: controller.zoomOut,
+                  backgroundColor: AppTheme.backgroundColor,
+                  tooltip: 'Thu nhỏ bản đồ',
+                  child: const Icon(Icons.remove, color: Colors.black87),
+                ),
+                const SizedBox(height: 8),
+
                 // Map Type Toggle
                 FloatingActionButton(
                   heroTag: 'map_type',
                   onPressed: controller.toggleMapType,
                   backgroundColor: AppTheme.backgroundColor,
+                  tooltip: 'Chuyển kiểu bản đồ',
                   child: const Icon(Icons.layers, color: Colors.black87),
                 ),
                 const SizedBox(height: 10),
@@ -161,6 +231,7 @@ class MapView extends GetView<MapController> {
                     backgroundColor: controller.isTrafficEnabled.value
                         ? Colors.blue
                         : AppTheme.backgroundColor,
+                    tooltip: 'Bật/tắt lớp giao thông',
                     child: Icon(
                       Icons.traffic,
                       color: controller.isTrafficEnabled.value
@@ -176,6 +247,7 @@ class MapView extends GetView<MapController> {
                   heroTag: 'my_location',
                   onPressed: controller.goToMyLocation,
                   backgroundColor: AppTheme.backgroundColor,
+                  tooltip: 'Vị trí của tôi',
                   child: Obx(
                     () => controller.isLoading.value
                         ? const CircularProgressIndicator(strokeWidth: 2)

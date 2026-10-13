@@ -11,7 +11,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:traffic_app/widgets/custom_alert.dart';
 
-import '../../../data/models/location_model.dart';
+import '../../../config/demo_config.dart';
 import '../../../data/models/traffic_post_model.dart';
 import '../../../data/repositories/follow_repository.dart';
 import '../../../data/repositories/traffic_post_repository.dart';
@@ -71,6 +71,7 @@ class MapController extends GetxController {
   var placeSuggestions = <Map<String, dynamic>>[].obs;
 
   /// URL template tương ứng cho TileLayer dựa vào MapType hiện tại
+  /// URL template tương ứng cho TileLayer dựa vào MapType hiện tại
   String get currentTileUrl {
     switch (currentMapType.value) {
       case AppMapType.satellite:
@@ -78,7 +79,6 @@ class MapController extends GetxController {
       case AppMapType.terrain:
         return 'https://tile.opentopomap.org/{z}/{x}/{y}.png';
       case AppMapType.normal:
-      default:
         return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
     }
   }
@@ -100,13 +100,19 @@ class MapController extends GetxController {
     taggedPosts.value = _getSampleTaggedPosts();
     _buildPostMarkers();
 
-    loadTaggedPosts();
-    _markerRefreshTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => loadTaggedPosts(),
-    );
-    _addDummyPolyline();
-    _checkLocationPermission();
+    if (DemoConfig.isDemoMode) {
+      debugPrint('[MapController] 📍 Kích hoạt vị trí cố định trên bản đồ Web Demo');
+      polylines.clear();
+      updateSimulatedUserMarker(DemoConfig.defaultCenter);
+    } else {
+      loadTaggedPosts();
+      _markerRefreshTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => loadTaggedPosts(),
+      );
+      _addDummyPolyline();
+      _checkLocationPermission();
+    }
 
     // Lắng nghe danh sách SOS theo thời gian thực
     ever(SosStreamService.to.sosList, (_) {
@@ -128,87 +134,96 @@ class MapController extends GetxController {
 
   void onMapReady() {
     debugPrint('MapController: flutter_map engine is ready');
+    if (DemoConfig.isDemoMode) {
+      updateSimulatedUserMarker(DemoConfig.currentSimulatedPosition);
+    }
   }
 
   /// Danh sách bài viết mẫu đa dạng hashtag để kiểm tra hiển thị Marker trên bản đồ
   List<TrafficPostModel> _getSampleTaggedPosts() {
-    return [
-      TrafficPostModel(
-        id: 'sample_ketxe',
-        userId: '101',
-        userName: 'Nguyễn Văn Nam',
-        content: 'Kẹt xe nghiêm trọng tại Ngã tư Cầu Giấy hướng về Kim Mã, các phương tiện di chuyển rất chậm.',
-        hashtags: ['ketxe'],
-        location: LocationModel(
-          lat: 21.033500,
-          lng: 105.800500,
-          address: 'Ngã tư Cầu Giấy, Hà Nội',
+    return DemoConfig.getInitialSamplePosts();
+  }
+
+
+  /// Cập nhật vị trí phương tiện mô phỏng di chuyển theo thời gian thực
+  void updateSimulatedUserMarker(LatLng position) {
+    markers.removeWhere(
+      (m) =>
+          m.key is ValueKey &&
+          (m.key as ValueKey).value == 'simulated_user_location',
+    );
+
+    markers.add(
+      fm.Marker(
+        key: const ValueKey('simulated_user_location'),
+        point: position,
+        width: 54,
+        height: 54,
+        child: Tooltip(
+          message: 'Vị trí của bạn (Cố định)',
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF2979FF).withOpacity(0.25),
+                ),
+              ),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF1565C0),
+                  border: Border.all(color: Colors.white, width: 2.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF1565C0).withOpacity(0.55),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.navigation,
+                  color: Colors.white,
+                  size: 19,
+                ),
+              ),
+            ],
+          ),
         ),
-        likes: 15,
-        isLiked: false,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 8)),
       ),
-      TrafficPostModel(
-        id: 'sample_tainan',
-        userId: '102',
-        userName: 'Trần Thị Mai',
-        content: 'Va chạm giao thông nhẹ tại nút giao Kim Mã - Liễu Giai, đường hơi ùn ứ một làn xe.',
-        hashtags: ['tainan'],
-        location: LocationModel(
-          lat: 21.031500,
-          lng: 105.813000,
-          address: 'Kim Mã - Liễu Giai, Ba Đình, Hà Nội',
-        ),
-        likes: 6,
-        isLiked: true,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 20)),
-      ),
-      TrafficPostModel(
-        id: 'sample_ngaplutnuoc',
-        userId: '103',
-        userName: 'Lê Hoàng Anh',
-        content: 'Đoạn đường ven sông Tô Lịch đang ngập nước khoảng 20-30cm sau mưa, các xe chú ý giảm tốc độ.',
-        hashtags: ['ngaplutnuoc'],
-        location: LocationModel(
-          lat: 21.025000,
-          lng: 105.802000,
-          address: 'Đường Láng, Cầu Giấy, Hà Nội',
-        ),
-        likes: 24,
-        isLiked: false,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 35)),
-      ),
-      TrafficPostModel(
-        id: 'sample_giaothong',
-        userId: '104',
-        userName: 'Đội CSGT Số 2',
-        content: 'Đang có lực lượng CSGT điều tiết phân luồng giờ cao điểm, các phương tiện đi lại ổn định.',
-        hashtags: ['giaothong'],
-        location: LocationModel(
-          lat: 21.029500,
-          lng: 105.810000,
-          address: 'Đường Kim Mã, Ba Đình, Hà Nội',
-        ),
-        likes: 42,
-        isLiked: false,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 50)),
-      ),
-      TrafficPostModel(
-        id: 'sample_sos',
-        userId: '105',
-        userName: 'Phạm Quốc Huy',
-        content: 'Xe máy bị thủng lốp cần hỗ trợ vá săm lưu động gần cây xăng Giảng Võ.',
-        hashtags: ['sos'],
-        location: LocationModel(
-          lat: 21.027000,
-          lng: 105.818000,
-          address: 'Giảng Võ, Đống Đa, Hà Nội',
-        ),
-        likes: 8,
-        isLiked: false,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
-      ),
-    ];
+    );
+  }
+
+  /// Bổ sung bài viết giao thông giả lập phát sinh định kỳ vào bản đồ
+  void addDynamicPost(TrafficPostModel post) {
+    if (!taggedPosts.any((p) => p.id == post.id)) {
+      taggedPosts.insert(0, post);
+      _buildPostMarkers();
+    }
+  }
+
+  /// Zoom In bằng nút click chuột
+  void zoomIn() {
+    final currentZoom = mapEngineController.camera.zoom;
+    mapEngineController.move(
+      mapEngineController.camera.center,
+      (currentZoom + 1.0).clamp(3.0, 19.0),
+    );
+  }
+
+  /// Zoom Out bằng nút click chuột
+  void zoomOut() {
+    final currentZoom = mapEngineController.camera.zoom;
+    mapEngineController.move(
+      mapEngineController.camera.center,
+      (currentZoom - 1.0).clamp(3.0, 19.0),
+    );
   }
 
   Future<void> fetchSuggestions(String input) async {
@@ -300,6 +315,12 @@ class MapController extends GetxController {
   }
 
   Future<void> _checkLocationPermission() async {
+    // Không yêu cầu popup cấp quyền GPS của trình duyệt trên Web Demo
+    if (DemoConfig.isDemoMode) {
+      debugPrint('[MapController] Demo Mode: Không yêu cầu popup cấp quyền GPS của trình duyệt');
+      return;
+    }
+
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -315,6 +336,14 @@ class MapController extends GetxController {
   }
 
   Future<void> goToMyLocation() async {
+    // Ở Web Demo: Di chuyển đến vị trí mô phỏng thay vì xin quyền GPS trình duyệt
+    if (DemoConfig.isDemoMode) {
+      final target = DemoConfig.currentSimulatedPosition;
+      mapEngineController.move(target, 16.0);
+      CustomAlert.showSuccess('Đang hiển thị vị trí cố định (Web Demo)');
+      return;
+    }
+
     try {
       isLoading.value = true;
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
