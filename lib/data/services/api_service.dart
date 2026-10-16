@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 
 import '../../routes/app_pages.dart';
 import '../../services/storage_service.dart';
+import '../../modules/login/controllers/login_controller.dart';
+import '../../modules/profile/controllers/profile_controller.dart';
 import 'network_check_interceptor.dart';
 
 class ApiService {
@@ -99,6 +101,13 @@ class ApiService {
             // Token expired or invalid and auto-login failed
             _storageService.removeToken();
             _storageService.clearCredentials();
+            _storageService.clearUserInfo();
+            if (Get.isRegistered<LoginController>()) {
+              Get.delete<LoginController>(force: true);
+            }
+            if (Get.isRegistered<ProfileController>()) {
+              Get.delete<ProfileController>(force: true);
+            }
             if (Get.context != null) {
               Get.offAllNamed(Routes.LOGIN);
             }

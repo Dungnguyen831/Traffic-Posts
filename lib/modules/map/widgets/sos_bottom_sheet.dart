@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -18,16 +19,34 @@ class SosBottomSheet {
     }
 
     Get.bottomSheet(
-      Container(
-        padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
-        decoration: BoxDecoration(
-          color: AppTheme.backgroundColor, 
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(24.r),
-            topRight: Radius.circular(24.r),
-          ),
+      ClipRRect(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(28.r),
+          topRight: Radius.circular(28.r),
         ),
-        child: SafeArea(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+            decoration: BoxDecoration(
+              color: const Color(0xFFECECEC).withOpacity(0.88),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(28.r),
+                topRight: Radius.circular(28.r),
+              ),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.7),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 28,
+                  offset: const Offset(0, -8),
+                ),
+              ],
+            ),
+            child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,8 +171,10 @@ class SosBottomSheet {
           ),
         ),
       ),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent, 
-    );
+    ),
+  ),
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent, 
+);
   }
 }

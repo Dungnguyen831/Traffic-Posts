@@ -16,9 +16,12 @@ import '../../../data/models/traffic_post_model.dart';
 import '../../../data/repositories/follow_repository.dart';
 import '../../../data/repositories/traffic_post_repository.dart';
 import '../../../data/services/sos_stream_service.dart';
+import '../../../data/services/traffic_post_socket_service.dart';
 import '../../../services/storage_service.dart';
 import '../widgets/post_bottom_sheet.dart';
 import '../widgets/sos_bottom_sheet.dart';
+import '../../emergency/controllers/emergency_controller.dart';
+import '../../emergency/views/sos_active_screen.dart';
 
 /// Các kiểu bản đồ hỗ trợ chuyển đổi
 enum AppMapType {
@@ -37,9 +40,10 @@ const List<String> kMapHashtags = [
   'sos',
 ];
 
-class MapController extends GetxController {
+class MapController extends GetxController with GetTickerProviderStateMixin {
   // Controller điều khiển flutter_map engine (tránh xung đột tên với MapController của GetX)
   final fm.MapController mapEngineController = fm.MapController();
+  AnimationController? _cameraAnimationController;
   final TextEditingController searchController = TextEditingController();
   final Dio _dio = Dio();
   final String _apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
@@ -53,7 +57,11 @@ class MapController extends GetxController {
   // Tagged posts (có hashtag khớp kMapHashtags)
   final taggedPosts = <TrafficPostModel>[].obs;
 
-  Timer? _markerRefreshTimer;
+  // Realtime WebSocket service và bộ nhớ đệm
+  final TrafficPostSocketService _socketService = TrafficPostSocketService();
+  final Map<String, TrafficPostModel> _postsById = {};
+  final Map<String, TrafficPostModel> _bufferedPosts = {};
+  bool _initialLoadCompleted = false;
 
   // Tọa độ khởi tạo hợp lệ (Hà Nội) - Giá trị cố định sẵn sàng ngay lập tức
   final LatLng _center = const LatLng(
@@ -78,7 +86,6 @@ class MapController extends GetxController {
       case AppMapType.terrain:
         return 'https://tile.opentopomap.org/{z}/{x}/{y}.png';
       case AppMapType.normal:
-      default:
         return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
     }
   }
@@ -96,15 +103,7 @@ class MapController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    // Khởi tạo bài viết mẫu để hiển thị ngay lập tức các marker lên bản đồ
-    taggedPosts.value = _getSampleTaggedPosts();
-    _buildPostMarkers();
-
-    loadTaggedPosts();
-    _markerRefreshTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => loadTaggedPosts(),
-    );
+    _initMapPostsAndSocket();
     _addDummyPolyline();
     _checkLocationPermission();
 
@@ -116,11 +115,110 @@ class MapController extends GetxController {
     if (SosStreamService.to.sosList.isNotEmpty) {
       _buildSosMarkers();
     }
+
+    // Lắng nghe trạng thái SOS của chính mình từ EmergencyController
+    if (Get.isRegistered<EmergencyController>()) {
+      final emergencyCtrl = Get.find<EmergencyController>();
+      ever(emergencyCtrl.isSosActive, (isActive) {
+        _buildSosMarkers();
+        if (isActive == true) {
+          centerOnActiveSos(
+            isOffsetForSheet: !emergencyCtrl.isSheetMinimized.value,
+            zoom: 16.0,
+            animated: true,
+          );
+        }
+      });
+      ever(emergencyCtrl.activeSosId, (_) => _buildSosMarkers());
+      ever(emergencyCtrl.activeSosLat, (_) => _buildSosMarkers());
+      ever(emergencyCtrl.activeSosLng, (_) => _buildSosMarkers());
+
+      // Khi người dùng vuốt lên hoặc xuống: tự động căn chỉnh tọa độ focus vào chính giữa phần hiển thị với hiệu ứng lướt mượt mà
+      ever(emergencyCtrl.isSheetMinimized, (minimized) {
+        if (emergencyCtrl.isSosActive.value) {
+          centerOnActiveSos(isOffsetForSheet: !minimized, animated: true);
+        }
+      });
+    }
+  }
+
+  /// Di chuyển camera bản đồ đến vị trí chỉ định có hiệu ứng lướt mượt mà (smooth animated camera move)
+  void animatedMapMove(
+    LatLng destLocation,
+    double destZoom, {
+    Duration duration = const Duration(milliseconds: 450),
+    Curve curve = Curves.easeInOutCubic,
+  }) {
+    _cameraAnimationController?.dispose();
+    _cameraAnimationController = AnimationController(
+      vsync: this,
+      duration: duration,
+    );
+
+    final startCenter = mapEngineController.camera.center;
+    final startZoom = mapEngineController.camera.zoom;
+
+    final latTween = Tween<double>(begin: startCenter.latitude, end: destLocation.latitude);
+    final lngTween = Tween<double>(begin: startCenter.longitude, end: destLocation.longitude);
+    final zoomTween = Tween<double>(begin: startZoom, end: destZoom);
+
+    final animation = CurvedAnimation(parent: _cameraAnimationController!, curve: curve);
+
+    _cameraAnimationController!.addListener(() {
+      try {
+        mapEngineController.move(
+          LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
+          zoomTween.evaluate(animation),
+        );
+      } catch (e) {
+        debugPrint('animatedMapMove error: $e');
+      }
+    });
+
+    _cameraAnimationController!.forward();
+  }
+
+  /// Di chuyển camera bản đồ đến tọa độ chỉ định tức thì
+  void moveToLocation(LatLng point, {double zoom = 16.0}) {
+    try {
+      mapEngineController.move(point, zoom);
+    } catch (e) {
+      debugPrint('MapController moveToLocation error: $e');
+    }
+  }
+
+  /// Căn chỉnh camera focus vào tọa độ SOS:
+  /// - isOffsetForSheet = false (khi vuốt xuống): focus vào chính giữa toàn màn hình
+  /// - isOffsetForSheet = true (khi vuốt lên): nảy lên trên vào chính giữa khoảng trống bản đồ
+  void centerOnActiveSos({
+    required bool isOffsetForSheet,
+    double? zoom,
+    bool animated = true,
+  }) {
+    if (!Get.isRegistered<EmergencyController>()) return;
+    final emCtrl = Get.find<EmergencyController>();
+    if (!emCtrl.isSosActive.value) return;
+    final lat = emCtrl.activeSosLat.value;
+    final lng = emCtrl.activeSosLng.value;
+    if (lat == 0.0 || lng == 0.0) return;
+
+    final currentZoom = mapEngineController.camera.zoom;
+    final targetZoom = zoom ?? (currentZoom < 14.5 ? 15.5 : currentZoom);
+    // Khi sheet mở, offset camera xuống phía dưới (lat - 0.0035) để tâm marker nảy lên chính giữa nửa trên bản đồ
+    final targetLat = isOffsetForSheet ? (lat - 0.0035) : lat;
+    final targetPoint = LatLng(targetLat, lng);
+
+    if (animated) {
+      animatedMapMove(targetPoint, targetZoom);
+    } else {
+      moveToLocation(targetPoint, zoom: targetZoom);
+    }
   }
 
   @override
   void onClose() {
-    _markerRefreshTimer?.cancel();
+    _cameraAnimationController?.dispose();
+    _socketService.disconnect();
     searchController.dispose();
     mapEngineController.dispose();
     super.onClose();
@@ -349,7 +447,85 @@ class MapController extends GetxController {
     }
   }
 
-  /// Load tất cả bài viết, lọc theo hashtag, tạo marker
+  /// Khởi tạo luồng nạp bài viết và kết nối STOMP an toàn không sót bài
+  Future<void> _initMapPostsAndSocket() async {
+    // 1. Nạp bài viết mẫu hiển thị tức thì
+    for (final sample in _getSampleTaggedPosts()) {
+      if (sample.id != null) {
+        _postsById[sample.id!] = sample;
+      }
+    }
+    taggedPosts.value = _postsById.values.toList();
+    _buildPostMarkers();
+
+    // 2. Kết nối WebSocket trước để không bỏ lỡ bài viết nào ở giữa
+    await _connectSocket();
+
+    // 3. Tải bài viết ban đầu qua REST API
+    await loadTaggedPosts();
+  }
+
+  /// Kết nối tới STOMP WebSocket server
+  Future<void> _connectSocket() async {
+    final token = _storageService.getToken();
+    if (token == null || token.isEmpty) {
+      debugPrint('[MapController] Chưa có JWT token, bỏ qua kết nối STOMP');
+      return;
+    }
+
+    final wsUrl = TrafficPostSocketService.resolveWebSocketUrl();
+
+    try {
+      await _socketService.connect(
+        webSocketUrl: wsUrl,
+        jwt: token,
+        onNewPost: (post) {
+          if (!_initialLoadCompleted) {
+            // Buffer event trong lúc REST ban đầu đang load
+            if (post.id != null) {
+              _bufferedPosts[post.id!] = post;
+            }
+            return;
+          }
+          upsertPostAndMarker(post);
+        },
+        onReconnect: () async {
+          debugPrint('[MapController] 🔄 Reconnected! Resync bài viết từ REST...');
+          await _resyncPostsFromRest();
+        },
+        onError: (err) {
+          debugPrint('[MapController] STOMP Socket error: $err');
+        },
+      );
+    } catch (e) {
+      debugPrint('[MapController] Lỗi khởi tạo WebSocket: $e');
+    }
+  }
+
+  /// Kiểm tra bài viết có đủ điều kiện hiển thị trên bản đồ không
+  bool _isEligibleForMap(TrafficPostModel post) {
+    final loc = post.location;
+    if (loc == null) return false;
+
+    final tags = post.hashtags?.map((t) => t.toLowerCase()).toList() ?? [];
+    if (tags.any((t) => kMapHashtags.contains(t))) return true;
+
+    if (post.type != null && post.type!.isNotEmpty) {
+      final t = post.type!.toLowerCase();
+      if (t == 'accident' ||
+          t == 'traffic' ||
+          t == 'sos' ||
+          t == 'hazard' ||
+          t == 'congestion') {
+        return true;
+      }
+    }
+
+    // Nếu không có hashtag nhưng có tọa độ và content thì vẫn hiển thị
+    return tags.isEmpty && post.content != null && post.content!.isNotEmpty;
+  }
+
+  /// Load tất cả bài viết từ REST API, merge với buffer và render marker
   Future<void> loadTaggedPosts() async {
     try {
       final posts = await _postRepository.getPosts(
@@ -358,33 +534,183 @@ class MapController extends GetxController {
         size: 50,
       );
 
-      // Lọc bài có hashtag nằm trong kMapHashtags và có tọa độ hợp lệ
-      final filtered = posts.where((p) {
-        if (p.location == null) return false;
-        final tags = p.hashtags?.map((t) => t.toLowerCase()).toList() ?? [];
-        return tags.any((t) => kMapHashtags.contains(t));
-      }).toList();
-
-      // Kết hợp bài viết từ API và danh sách bài viết mẫu để luôn có dữ liệu kiểm tra
-      final combined = [...filtered];
-      for (final sample in _getSampleTaggedPosts()) {
-        if (!combined.any((p) => p.id == sample.id)) {
-          combined.add(sample);
+      // Thêm bài viết từ REST
+      for (final post in posts) {
+        if (post.id != null && _isEligibleForMap(post)) {
+          _postsById[post.id!] = post;
         }
       }
 
-      taggedPosts.value = combined;
+      // Thêm các bài buffered nhận được trong lúc REST đang tải
+      for (final post in _bufferedPosts.values) {
+        if (post.id != null && _isEligibleForMap(post)) {
+          _postsById[post.id!] = post;
+        }
+      }
+      _bufferedPosts.clear();
+
+      // Kết hợp bài viết mẫu nếu chưa có
+      for (final sample in _getSampleTaggedPosts()) {
+        if (sample.id != null && !_postsById.containsKey(sample.id)) {
+          _postsById[sample.id!] = sample;
+        }
+      }
+
+      _initialLoadCompleted = true;
+      taggedPosts.value = _postsById.values.toList();
       _buildPostMarkers();
     } catch (e) {
       debugPrint('MapController loadTaggedPosts error: $e');
-      // Nếu API gặp sự cố hoặc offline, đảm bảo vẫn có bài viết mẫu hiển thị
+      _initialLoadCompleted = true;
       if (taggedPosts.isEmpty) {
-        taggedPosts.value = _getSampleTaggedPosts();
+        for (final sample in _getSampleTaggedPosts()) {
+          if (sample.id != null) {
+            _postsById[sample.id!] = sample;
+          }
+        }
+        taggedPosts.value = _postsById.values.toList();
         _buildPostMarkers();
       }
     }
   }
 
+  /// Đồng bộ bù dữ liệu từ REST sau khi reconnect WebSocket thành công
+  Future<void> _resyncPostsFromRest() async {
+    try {
+      final posts = await _postRepository.getPosts(
+        location: '',
+        page: 0,
+        size: 50,
+      );
+
+      bool hasNew = false;
+      for (final post in posts) {
+        if (post.id != null &&
+            !_postsById.containsKey(post.id) &&
+            _isEligibleForMap(post)) {
+          _postsById[post.id!] = post;
+          taggedPosts.add(post);
+
+          final marker = _createMarkerForPost(post);
+          if (marker != null) {
+            markers.add(marker);
+          }
+          hasNew = true;
+        }
+      }
+
+      if (hasNew) {
+        debugPrint(
+          '[MapController] ✅ Đồng bộ REST bù hoàn tất, đã thêm các bài mới bị lỡ',
+        );
+      }
+    } catch (e) {
+      debugPrint('[MapController] Lỗi đồng bộ bù REST: $e');
+    }
+  }
+
+  /// Thêm marker an toàn khi nhận tin realtime (dedupe bằng post.id)
+  void upsertPostAndMarker(TrafficPostModel post) {
+    final location = post.location;
+    if (location == null) {
+      return;
+    }
+
+    if (post.id == null || _postsById.containsKey(post.id)) {
+      return;
+    }
+
+    if (!_isEligibleForMap(post)) {
+      return;
+    }
+
+    _postsById[post.id!] = post;
+    taggedPosts.add(post);
+
+    final newMarker = _createMarkerForPost(post);
+    if (newMarker != null) {
+      // Đảm bảo không trùng key
+      markers.removeWhere((m) => m.key == newMarker.key);
+      markers.add(newMarker);
+      debugPrint('[MapController] 📍 Đã thêm marker realtime cho post: ${post.id}');
+    }
+  }
+
+  /// Dựng marker cho 1 bài viết
+  fm.Marker? _createMarkerForPost(TrafficPostModel post) {
+    final loc = post.location;
+    if (loc == null) return null;
+
+    // Màu marker theo hashtag đầu tiên khớp
+    final matchingTags = (post.hashtags ?? [])
+        .map((t) => t.toLowerCase())
+        .where((t) => kMapHashtags.contains(t))
+        .toList();
+    final firstTag = matchingTags.isNotEmpty ? matchingTags.first : '';
+    final displayTag = firstTag.isNotEmpty
+        ? '#$firstTag'
+        : ((post.hashtags?.isNotEmpty ?? false)
+            ? '#${post.hashtags!.first}'
+            : (post.type != null && post.type!.isNotEmpty ? '#${post.type}' : ''));
+    final tagColor = _colorForTag(firstTag);
+
+    return fm.Marker(
+      key: ValueKey('post_${post.id}'),
+      point: LatLng(loc.lat, loc.lng),
+      width: 85,
+      height: 65,
+      child: GestureDetector(
+        onTap: () => _showPostBottomSheet(post),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (displayTag.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  displayTag,
+                  style: TextStyle(
+                    color: tagColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            Icon(
+              Icons.location_on,
+              color: tagColor,
+              size: 36,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Dựng toàn bộ markers từ danh sách taggedPosts
   void _buildPostMarkers() {
     // Xóa marker bài viết cũ, giữ search_result và sos nếu có
     markers.removeWhere(
@@ -394,76 +720,10 @@ class MapController extends GetxController {
     );
 
     for (final post in taggedPosts) {
-      final loc = post.location;
-      if (loc == null) continue;
-
-      // Màu marker theo hashtag đầu tiên khớp
-      final matchingTags = (post.hashtags ?? [])
-          .map((t) => t.toLowerCase())
-          .where((t) => kMapHashtags.contains(t))
-          .toList();
-      final firstTag = matchingTags.isNotEmpty ? matchingTags.first : '';
-      final displayTag = firstTag.isNotEmpty
-          ? '#$firstTag'
-          : ((post.hashtags?.isNotEmpty ?? false) ? post.hashtags!.first : '');
-      final tagColor = _colorForTag(firstTag);
-
-      markers.add(
-        fm.Marker(
-          key: ValueKey('post_${post.id}'),
-          point: LatLng(loc.lat, loc.lng),
-          width: 85,
-          height: 65,
-          child: GestureDetector(
-            onTap: () => _showPostBottomSheet(post),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (displayTag.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.25),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      displayTag,
-                      style: TextStyle(
-                        color: tagColor,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                Icon(
-                  Icons.location_on,
-                  color: tagColor,
-                  size: 36,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      final marker = _createMarkerForPost(post);
+      if (marker != null) {
+        markers.add(marker);
+      }
     }
   }
 
@@ -555,6 +815,9 @@ class MapController extends GetxController {
   void _syncToTaggedPosts(TrafficPostModel updated) {
     final idx = taggedPosts.indexWhere((p) => p.id == updated.id);
     if (idx != -1) taggedPosts[idx] = updated;
+    if (updated.id != null) {
+      _postsById[updated.id!] = updated;
+    }
   }
 
   void _addDummyPolyline() {
@@ -577,43 +840,59 @@ class MapController extends GetxController {
     markers.removeWhere(
       (m) =>
           m.key is ValueKey &&
-          (m.key as ValueKey).value.toString().startsWith('sos_'),
+          ((m.key as ValueKey).value.toString().startsWith('sos_') ||
+           (m.key as ValueKey).value.toString() == 'my_active_sos_radar'),
     );
 
-    // 2. Lấy dữ liệu từ Service
+    // 2. Kiểm tra nếu chính người dùng đang phát tín hiệu SOS -> Hiển thị Radar Marker sóng tỏa
+    String myActiveId = '';
+    if (Get.isRegistered<EmergencyController>()) {
+      final emergencyCtrl = Get.find<EmergencyController>();
+      myActiveId = emergencyCtrl.activeSosId.value;
+
+      if (emergencyCtrl.isSosActive.value &&
+          emergencyCtrl.activeSosLat.value != 0.0 &&
+          emergencyCtrl.activeSosLng.value != 0.0) {
+        markers.add(
+          fm.Marker(
+            key: const ValueKey('my_active_sos_radar'),
+            point: LatLng(
+              emergencyCtrl.activeSosLat.value,
+              emergencyCtrl.activeSosLng.value,
+            ),
+            width: 140,
+            height: 140,
+            alignment: Alignment.center,
+            child: SosRadarMarkerWidget(
+              size: 140,
+              onTap: () {
+                // Chạm vào radar trên map mở lại sheet
+                emergencyCtrl.isSheetMinimized.value = false;
+              },
+            ),
+          ),
+        );
+      }
+    }
+
+    // 3. Lấy dữ liệu từ Service (dành cho các SOS khác trong khu vực)
     final sosList = SosStreamService.to.sosList;
 
-    // 3. Vẽ lại toàn bộ Marker SOS
     for (final sos in sosList) {
       if (sos.latitude == null || sos.longitude == null) continue;
+      // Bỏ qua nếu là SOS của chính mình vì đã được vẽ radar marker ở trên
+      if (myActiveId.isNotEmpty && sos.sosId == myActiveId) continue;
 
       markers.add(
         fm.Marker(
           key: ValueKey('sos_${sos.sosId}'),
           point: LatLng(sos.latitude!, sos.longitude!),
-          width: 44,
-          height: 44,
-          child: GestureDetector(
+          width: 140,
+          height: 140,
+          alignment: Alignment.center,
+          child: SosRadarMarkerWidget(
+            size: 140,
             onTap: () => SosBottomSheet.show(sos: sos),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.pinkAccent.shade400,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.pinkAccent.withValues(alpha: 0.6),
-                    blurRadius: 8,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.emergency,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
           ),
         ),
       );

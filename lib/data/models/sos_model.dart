@@ -7,6 +7,8 @@ class SosResponseDTO {
   final String? note;
   final DateTime? timestamp;
   final String? status;
+  final int? userId;
+  final String? username;
 
   SosResponseDTO({
     required this.sosId,
@@ -17,20 +19,24 @@ class SosResponseDTO {
     this.note,
     this.timestamp,
     this.status,
+    this.userId,
+    this.username,
   });
 
   factory SosResponseDTO.fromJson(Map<String, dynamic> json) {
     return SosResponseDTO(
-      sosId: json['sosId'] as String? ?? '',
+      sosId: json['sosId'] as String? ?? json['id']?.toString() ?? '',
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
-      phoneNumber: json['phoneNumber'] as String?,
+      phoneNumber: json['phoneNumber'] as String? ?? json['phone'] as String?,
       address: json['address'] as String?,
       note: json['note'] as String?,
       timestamp: json['timestamp'] != null
           ? DateTime.tryParse(json['timestamp'] as String)
           : null,
       status: json['status'] as String?,
+      userId: (json['userId'] as num?)?.toInt() ?? (json['user_id'] as num?)?.toInt(),
+      username: json['username'] as String?,
     );
   }
 
@@ -43,5 +49,7 @@ class SosResponseDTO {
     'note': note,
     'timestamp': timestamp?.toIso8601String(),
     'status': status,
+    'userId': userId,
+    'username': username,
   };
 }

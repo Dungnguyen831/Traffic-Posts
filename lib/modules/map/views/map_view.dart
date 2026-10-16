@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fm;
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
 import 'package:traffic_app/theme/app_theme.dart';
 
+import '../../emergency/controllers/emergency_controller.dart';
 import '../controllers/map_controller.dart';
 
 class MapView extends GetView<MapController> {
@@ -11,12 +13,11 @@ class MapView extends GetView<MapController> {
 
   @override
   Widget build(BuildContext context) {
-    // Đảm bảo không gian hiển thị toàn màn hình, không bị co lại chiều cao 0
     return SizedBox.expand(
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // flutter_map Engine - Đảm bảo kích thước toàn màn hình với Positioned.fill
+          // flutter_map Engine
           Positioned.fill(
             child: fm.FlutterMap(
               mapController: controller.mapEngineController,
@@ -31,7 +32,7 @@ class MapView extends GetView<MapController> {
                 ),
               ),
               children: [
-                // Tile Layer với OpenStreetMap, fallback mirror, và User Agent chuẩn
+                // Tile Layer
                 Obx(
                   () => fm.TileLayer(
                     urlTemplate: controller.currentTileUrl,
@@ -48,7 +49,7 @@ class MapView extends GetView<MapController> {
                   ),
                 ),
 
-                // Marker Layer cho Search result, Bài viết tagged, và Sự cố SOS
+                // Marker Layer cho Search result, Bài viết tagged, và Sự cố SOS (kèm radar sóng tỏa)
                 Obx(
                   () => fm.MarkerLayer(
                     markers: controller.markers.toList(),
@@ -58,133 +59,153 @@ class MapView extends GetView<MapController> {
             ),
           ),
 
-          // Search Bar with Suggestions
-          Positioned(
-            top: 50,
-            left: 20,
-            right: 20,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 15),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
+          // Search Bar: Ẩn khi SOS đang hoạt động để nhường không gian cho bản đồ và Top Banner
+          Obx(() {
+            final isEmergencyRegistered = Get.isRegistered<EmergencyController>();
+            final isSosActive = isEmergencyRegistered &&
+                Get.find<EmergencyController>().isSosActive.value;
+
+            if (isSosActive) {
+              return const SizedBox.shrink();
+            }
+
+            return Positioned(
+              top: 50.h,
+              left: 20.w,
+              right: 20.w,
+              child: Column(
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 15.w),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(30.r),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: TextField(
+                        controller: controller.searchController,
+                        decoration: const InputDecoration(
+                          hintText: 'Tìm kiếm địa điểm...',
+                          border: InputBorder.none,
+                          icon: Icon(IconlyBroken.search, color: Colors.grey),
+                        ),
+                        onChanged: (value) {
+                          controller.fetchSuggestions(value);
+                        },
+                        onSubmitted: (value) {
+                          controller.searchLocation(value);
+                        },
                       ),
-                    ],
-                  ),
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: TextField(
-                      controller: controller.searchController,
-                      decoration: const InputDecoration(
-                        hintText: 'Tìm kiếm địa điểm...',
-                        border: InputBorder.none,
-                        icon: Icon(IconlyBroken.search, color: Colors.grey),
-                      ),
-                      onChanged: (value) {
-                        controller.fetchSuggestions(value);
-                      },
-                      onSubmitted: (value) {
-                        controller.searchLocation(value);
-                      },
                     ),
                   ),
-                ),
-                Obx(
-                  () => controller.placeSuggestions.isNotEmpty
-                      ? Container(
-                          margin: const EdgeInsets.only(top: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            padding: EdgeInsets.zero,
-                            itemCount: controller.placeSuggestions.length,
-                            itemBuilder: (context, index) {
-                              final suggestion =
-                                  controller.placeSuggestions[index];
-                              return ListTile(
-                                title: Text(suggestion['description']),
-                                leading: const Icon(
-                                  IconlyBroken.location,
-                                  color: Colors.grey,
+                  Obx(
+                    () => controller.placeSuggestions.isNotEmpty
+                        ? Container(
+                            margin: EdgeInsets.only(top: 10.h),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10.r),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 5),
                                 ),
-                                onTap: () {
-                                  controller.selectSuggestion(suggestion);
-                                  FocusScope.of(context).unfocus();
-                                },
-                              );
-                            },
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-              ],
-            ),
-          ),
+                              ],
+                            ),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: controller.placeSuggestions.length,
+                              itemBuilder: (context, index) {
+                                final suggestion =
+                                    controller.placeSuggestions[index];
+                                return ListTile(
+                                  title: Text(suggestion['description']),
+                                  leading: const Icon(
+                                    IconlyBroken.location,
+                                    color: Colors.grey,
+                                  ),
+                                  onTap: () {
+                                    controller.selectSuggestion(suggestion);
+                                    FocusScope.of(context).unfocus();
+                                  },
+                                );
+                              },
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            );
+          }),
 
-          // Control Buttons
-          Positioned(
-            right: 10,
-            bottom: 90,
-            child: Column(
-              children: [
-                // Map Type Toggle
-                FloatingActionButton(
-                  heroTag: 'map_type',
-                  onPressed: controller.toggleMapType,
-                  backgroundColor: AppTheme.backgroundColor,
-                  child: const Icon(Icons.layers, color: Colors.black87),
-                ),
-                const SizedBox(height: 10),
+          // Control Buttons (Map Type, Traffic, My Location) - Tự động trượt lên khi mở sheet SOS
+          Obx(() {
+            final isEmergencyRegistered = Get.isRegistered<EmergencyController>();
+            final isSosActive = isEmergencyRegistered &&
+                Get.find<EmergencyController>().isSosActive.value;
+            final isSheetOpen = isSosActive &&
+                !Get.find<EmergencyController>().isSheetMinimized.value;
 
-                // Traffic Toggle
-                Obx(
-                  () => FloatingActionButton(
-                    heroTag: 'traffic',
-                    onPressed: controller.toggleTraffic,
-                    backgroundColor: controller.isTrafficEnabled.value
-                        ? Colors.blue
-                        : AppTheme.backgroundColor,
-                    child: Icon(
-                      Icons.traffic,
-                      color: controller.isTrafficEnabled.value
-                          ? Colors.white
-                          : Colors.black87,
+            return AnimatedPositioned(
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeInOutCubic,
+              right: 12.w,
+              bottom: isSheetOpen ? 300.h : 90.h,
+              child: Column(
+                children: [
+                  // Map Type Toggle
+                  FloatingActionButton(
+                    heroTag: 'map_type',
+                    onPressed: controller.toggleMapType,
+                    backgroundColor: AppTheme.backgroundColor,
+                    child: const Icon(Icons.layers, color: Colors.black87),
+                  ),
+                  SizedBox(height: 10.h),
+
+                  // Traffic Toggle
+                  Obx(
+                    () => FloatingActionButton(
+                      heroTag: 'traffic',
+                      onPressed: controller.toggleTraffic,
+                      backgroundColor: controller.isTrafficEnabled.value
+                          ? Colors.blue
+                          : AppTheme.backgroundColor,
+                      child: Icon(
+                        Icons.traffic,
+                        color: controller.isTrafficEnabled.value
+                            ? Colors.white
+                            : Colors.black87,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
+                  SizedBox(height: 10.h),
 
-                // My Location
-                FloatingActionButton(
-                  heroTag: 'my_location',
-                  onPressed: controller.goToMyLocation,
-                  backgroundColor: AppTheme.backgroundColor,
-                  child: Obx(
-                    () => controller.isLoading.value
-                        ? const CircularProgressIndicator(strokeWidth: 2)
-                        : const Icon(IconlyBold.location, color: Colors.black87),
+                  // My Location
+                  FloatingActionButton(
+                    heroTag: 'my_location',
+                    onPressed: controller.goToMyLocation,
+                    backgroundColor: AppTheme.backgroundColor,
+                    child: Obx(
+                      () => controller.isLoading.value
+                          ? const CircularProgressIndicator(strokeWidth: 2)
+                          : const Icon(IconlyBold.location, color: Colors.black87),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );
