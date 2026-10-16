@@ -10,6 +10,9 @@ abstract class Routes {
   static const CAMERA = _Paths.CAMERA;
   static const EMERGENCY = _Paths.EMERGENCY;
   static const SOS_STREAM = _Paths.SOS_STREAM;
+  static const VIOLATION_SUBSCRIPTION = _Paths.VIOLATION_SUBSCRIPTION;
+  static const RANKING = _Paths.RANKING;
+  static const FOLLOW_MANAGEMENT = _Paths.FOLLOW_MANAGEMENT;
 }
 
 abstract class _Paths {
@@ -21,4 +24,7 @@ abstract class _Paths {
   static const CAMERA = '/camera';
   static const EMERGENCY = '/emergency';
   static const SOS_STREAM = '/sos-stream';
+  static const VIOLATION_SUBSCRIPTION = '/violation-subscription';
+  static const RANKING = '/ranking';
+  static const FOLLOW_MANAGEMENT = '/follow-management';
 }

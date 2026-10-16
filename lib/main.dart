@@ -57,10 +57,15 @@ void main() async {
 
       // Save user information
       await storageService.saveUserInfo(
+        userId: loginResponse.id,
         username: loginResponse.username,
         fullname: loginResponse.fullname,
         province: loginResponse.province,
         relativePhone: loginResponse.relativePhone,
+        phoneNumber: loginResponse.phoneNumber,
+        reputationScore: loginResponse.reputationScore,
+        badge: loginResponse.badge,
+        canCreatePost: loginResponse.canCreatePost,
       );
 
       initialRoute = Routes.HOME;

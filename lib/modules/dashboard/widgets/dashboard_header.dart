@@ -6,7 +6,12 @@ import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
 import 'package:traffic_app/widgets/loading_widget.dart';
 
+import 'package:google_fonts/google_fonts.dart';
+
 import '../../../routes/app_pages.dart';
+import '../../../theme/app_theme.dart';
+import '../../emergency/controllers/emergency_controller.dart';
+import '../../home/controllers/home_controller.dart';
 import '../../profile/controllers/profile_controller.dart';
 import '../../profile/views/user_profile_screen.dart';
 
@@ -20,28 +25,92 @@ class DashboardHeader extends StatelessWidget {
 
     return Row(
       children: [
-        // Logo placeholder
-        // Container(
-        //   width: 32.w,
-        //   height: 32.w,
-        //   decoration: BoxDecoration(
-        //     color: Colors.grey[300],
-        //     borderRadius: BorderRadius.circular(100.r),
-        //   ),
-        //   child: Icon(Icons.traffic, size: 20.sp, color: Colors.black54),
-        // ),
+        // Logo ứng dụng kèm tên Traffic Posts phía trên cùng bên trái
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34.w,
+              height: 34.w,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withOpacity(0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.r),
+                child: Image.asset(
+                  'assets/icons/app_icon_big.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            SizedBox(width: 8.w),
+            RichText(
+              text: TextSpan(
+                style: GoogleFonts.quicksand(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                ),
+                children: const [
+                  TextSpan(
+                    text: 'Traffic ',
+                    style: TextStyle(color: AppTheme.textColor),
+                  ),
+                  TextSpan(
+                    text: 'Posts',
+                    style: TextStyle(color: AppTheme.primaryColor),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         const Spacer(),
-        // SvgPicture.asset(
-        //   'assets/icons/notification.svg',
-        //   width: 32.w,
-        //   height: 32.w,
-        // ),
-        SizedBox(width: 20.w),
+        // Nút Bảng xếp hạng uy tín
+        GestureDetector(
+          onTap: () => Get.toNamed(Routes.RANKING),
+          child: Container(
+            width: 38.w,
+            height: 38.w,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.emoji_events_rounded,
+              size: 20.sp,
+              color: const Color(0xFFE5A100),
+            ),
+          ),
+        ),
+        SizedBox(width: 14.w),
         // Map marker
         // Nút Cứu hộ khẩn cấp
         GestureDetector(
           onTap: () {
-            Get.toNamed(Routes.EMERGENCY);
+            if (Get.isRegistered<EmergencyController>() &&
+                Get.find<EmergencyController>().isSosActive.value) {
+              Get.find<EmergencyController>().isSheetMinimized.value = false;
+              if (Get.isRegistered<HomeController>()) {
+                Get.find<HomeController>().changeTab(1);
+              }
+            } else {
+              Get.toNamed(Routes.EMERGENCY);
+            }
           },
           child: SvgPicture.asset(
             'assets/icons/warning_appbar.svg',
@@ -49,7 +118,7 @@ class DashboardHeader extends StatelessWidget {
             height: 40.w,
           ),
         ),
-        SizedBox(width: 20.w),
+        SizedBox(width: 14.w),
         // Avatar - hiển thị từ ProfileController
         GestureDetector(
           onTap: () {
