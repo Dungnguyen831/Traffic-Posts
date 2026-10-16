@@ -19,173 +19,316 @@ class FineResultList extends StatelessWidget {
         16.w,
         MediaQuery.of(context).viewPadding.bottom + 80.h,
       ),
+      physics: const BouncingScrollPhysics(),
       itemCount: records.length,
-      itemBuilder: (_, index) => FineCard(record: records[index], index: index),
+      itemBuilder: (_, index) => FineCard(
+        key: ValueKey(records[index].violationCode.isNotEmpty
+            ? '${records[index].violationCode}_$index'
+            : '$index'),
+        record: records[index],
+        index: index,
+      ),
     );
   }
 }
 
-class FineCard extends StatelessWidget {
+class FineCard extends StatefulWidget {
   const FineCard({required this.record, required this.index, super.key});
   final FineRecord record;
   final int index;
 
-  /// Strip internal code prefix e.g. "12321.5.5.i.01.Điều khiển xe..."
-  static String _cleanViolation(String raw) {
-    // Match patterns like "CC.X.Y.z.NN." at the start
-    final match = RegExp(r'^[\d.a-zA-Z]+\.\s*').firstMatch(raw);
-    if (match != null && match.end < raw.length) {
-      final afterCode = raw.substring(match.end).trimLeft();
-      if (afterCode.isNotEmpty) return afterCode;
-    }
-    return raw;
-  }
+  @override
+  State<FineCard> createState() => _FineCardState();
+}
+
+class _FineCardState extends State<FineCard> {
+  bool _isExpanded = false;
 
   @override
   Widget build(BuildContext context) {
+    final record = widget.record;
     final isPaid = record.isPaid;
     final accentColor = isPaid ? AppTheme.successColor : AppTheme.errorColor;
-    final statusBgColor = isPaid
-        ? AppTheme.successBgColor
-        : AppTheme.errorBgColor;
+    final statusBgColor =
+        isPaid ? AppTheme.successBgColor : AppTheme.errorBgColor;
+
+    final displayIndex = record.index > 0 ? record.index : widget.index + 1;
 
     return Container(
-      margin: EdgeInsets.only(bottom: 14.h),
+      margin: EdgeInsets.only(bottom: 12.h),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(36.r),
+        borderRadius: BorderRadius.circular(20.r),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF04060F).withValues(alpha: 0.05),
-            offset: const Offset(0, 4),
-            blurRadius: 40,
+            color: const Color(0xFF04060F).withValues(alpha: 0.04),
+            offset: const Offset(0, 3),
+            blurRadius: 20,
           ),
         ],
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20.r),
+        child: Stack(
           children: [
-            // Left accent border
-            Container(
-              width: 4.w,
-              margin: EdgeInsets.symmetric(vertical: 20.h),
-              decoration: BoxDecoration(
-                color: accentColor,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(36.r),
-                  bottomLeft: Radius.circular(36.r),
-                ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.all(16.w),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${'discovery_violation'.tr} #${index + 1}',
-                                style: TextStyle(
-                                  fontSize: 11.sp,
-                                  color: AppTheme.subTextColor,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              SizedBox(height: 2.h),
-                              Text(
-                                record.bienKiemSoat.isNotEmpty
-                                    ? record.bienKiemSoat
-                                    : '—',
-                                style: TextStyle(
-                                  fontSize: 18.sp,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.textColor,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              if (record.loaiPhuongTien.isNotEmpty)
-                                Text(
-                                  record.loaiPhuongTien,
-                                  style: TextStyle(
-                                    fontSize: 11.sp,
-                                    color: AppTheme.subTextColor,
-                                  ),
-                                ),
-                            ],
+            // Nội dung chính của Card
+            Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 14.h, 14.w, 14.h),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header: Số thứ tự + Mã lỗi + Trạng thái
+                  Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 3.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.backgroundColor,
+                          borderRadius: BorderRadius.circular(6.r),
+                        ),
+                        child: Text(
+                          '${'discovery_violation'.tr} #$displayIndex',
+                          style: TextStyle(
+                            fontSize: 11.sp,
+                            color: AppTheme.textColor,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        SizedBox(width: 8.w),
+                      ),
+                      if (record.violationCode.isNotEmpty) ...[
+                        SizedBox(width: 6.w),
                         Container(
                           padding: EdgeInsets.symmetric(
-                            horizontal: 10.w,
-                            vertical: 5.h,
+                            horizontal: 6.w,
+                            vertical: 3.h,
                           ),
                           decoration: BoxDecoration(
-                            color: statusBgColor,
-                            borderRadius: BorderRadius.circular(20.r),
+                            color: AppTheme.primaryBgColor,
+                            borderRadius: BorderRadius.circular(6.r),
                           ),
                           child: Text(
-                            record.trangThai.isEmpty
-                                ? 'discovery_status_unknown'.tr
-                                : record.trangThai,
+                            record.violationCode,
                             style: TextStyle(
-                              fontSize: 11.sp,
+                              fontSize: 10.sp,
+                              color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w600,
-                              color: accentColor,
                             ),
                           ),
                         ),
                       ],
+                      const Spacer(),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 10.w,
+                          vertical: 4.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusBgColor,
+                          borderRadius: BorderRadius.circular(20.r),
+                        ),
+                        child: Text(
+                          record.status.isEmpty
+                              ? 'discovery_status_unknown'.tr
+                              : record.status,
+                          style: TextStyle(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w700,
+                            color: accentColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 10.h),
+
+                  // Hành vi vi phạm (Mục quan trọng nhất - luôn hiện)
+                  Text(
+                    record.cleanedViolationTitle,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textColor,
+                      height: 1.4,
                     ),
-                    SizedBox(height: 12.h),
-                    Divider(
-                      height: 1,
-                      thickness: 0.5,
-                      color: AppTheme.dividerColor,
+                  ),
+                  SizedBox(height: 10.h),
+
+                  // Thời gian vi phạm (Luôn hiện)
+                  if (record.occurredAt.isNotEmpty)
+                    _CompactInfoRow(
+                      icon: IconlyBroken.time_circle,
+                      iconColor: AppTheme.primaryColor,
+                      text: record.formattedOccurredAt,
                     ),
-                    SizedBox(height: 12.h),
-                    // Detail rows
-                    if (record.hanhViViPham.isNotEmpty)
-                      _DetailRow(
-                        icon: IconlyBroken.document,
-                        iconColor: AppTheme.warningColor,
-                        label: 'discovery_field_violation'.tr,
-                        value: _cleanViolation(record.hanhViViPham),
-                      ),
-                    if (record.thoiGianViPham.isNotEmpty)
-                      _DetailRow(
-                        icon: IconlyBroken.time_circle,
-                        iconColor: AppTheme.primaryColor,
-                        label: 'discovery_field_time'.tr,
-                        value: record.thoiGianViPham,
-                      ),
-                    if (record.diaDiemViPham.isNotEmpty)
-                      _DetailRow(
-                        icon: IconlyBroken.location,
-                        iconColor: AppTheme.errorColor,
-                        label: 'discovery_field_location'.tr,
-                        value: record.diaDiemViPham,
-                      ),
-                    if (record.donViPhatHien.isNotEmpty)
-                      _DetailRow(
-                        icon: IconlyBroken.shield_done,
-                        iconColor: AppTheme.subTextColor,
-                        label: 'discovery_field_unit'.tr,
-                        value: record.donViPhatHien,
-                      ),
-                    if (record.noiGiaiQuyet.isNotEmpty)
-                      FineResolveSection(items: record.noiGiaiQuyet),
+
+                  // Địa điểm vi phạm (Luôn hiện)
+                  if (record.location.isNotEmpty) ...[
+                    SizedBox(height: 6.h),
+                    _CompactInfoRow(
+                      icon: IconlyBroken.location,
+                      iconColor: AppTheme.errorColor,
+                      text: record.location,
+                    ),
                   ],
-                ),
+
+                  SizedBox(height: 12.h),
+
+                  // Nút bấm mở rộng / thu gọn
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _isExpanded = !_isExpanded;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(10.r),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.w,
+                        vertical: 8.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _isExpanded
+                            ? AppTheme.backgroundColor
+                            : AppTheme.primaryBgColor.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(10.r),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _isExpanded
+                                ? 'discovery_collapse_details'.tr
+                                : 'discovery_view_details'.tr,
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                          SizedBox(width: 4.w),
+                          AnimatedRotation(
+                            turns: _isExpanded ? 0.5 : 0.0,
+                            duration: const Duration(milliseconds: 200),
+                            child: Icon(
+                              IconlyLight.arrow_down_2,
+                              size: 14.r,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // PHẦN CHI TIẾT (Dùng ClipRect + AnimatedSize ngăn chặn triệt để RenderFlex overflow)
+                  ClipRect(
+                    child: AnimatedSize(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeInOut,
+                      alignment: Alignment.topCenter,
+                      child: _isExpanded
+                          ? Padding(
+                              padding: EdgeInsets.only(top: 14.h),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Divider(
+                                    height: 1,
+                                    thickness: 0.5,
+                                    color: AppTheme.dividerColor,
+                                  ),
+                                  SizedBox(height: 12.h),
+
+                                  // Mức phạt & Căn cứ quy định
+                                  if (record.penalty.isNotEmpty) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      padding: EdgeInsets.all(12.w),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.warningBgColor
+                                            .withValues(alpha: 0.7),
+                                        borderRadius:
+                                            BorderRadius.circular(14.r),
+                                        border: Border.all(
+                                          color: AppTheme.warningColor
+                                              .withValues(alpha: 0.2),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                IconlyBold.document,
+                                                size: 15.r,
+                                                color: AppTheme.warningColor,
+                                              ),
+                                              SizedBox(width: 6.w),
+                                              Text(
+                                                'discovery_field_penalty'.tr,
+                                                style: TextStyle(
+                                                  fontSize: 12.sp,
+                                                  color:
+                                                      AppTheme.warningColor,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          SizedBox(height: 6.h),
+                                          Text(
+                                            record.penalty,
+                                            style: TextStyle(
+                                              fontSize: 12.sp,
+                                              color: AppTheme.textColor,
+                                              height: 1.45,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(height: 12.h),
+                                  ],
+
+                                  // Đơn vị phát hiện vi phạm
+                                  if (record.detectedBy.isNotEmpty) ...[
+                                    _DetailItem(
+                                      icon: IconlyBroken.shield_done,
+                                      iconColor: AppTheme.primaryColor,
+                                      label: 'discovery_field_unit'.tr,
+                                      value: record.detectedBy,
+                                    ),
+                                    SizedBox(height: 12.h),
+                                  ],
+
+                                  // Nơi giải quyết vụ việc
+                                  if (record.resolutionUnits.isNotEmpty)
+                                    _ResolutionUnitsSection(
+                                      units: record.resolutionUnits,
+                                    ),
+                                ],
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Viền màu accent tuyệt đối bên trái (Thay thế hoàn toàn IntrinsicHeight)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                width: 4.5.w,
+                color: accentColor,
               ),
             ),
           ],
@@ -195,8 +338,45 @@ class FineCard extends StatelessWidget {
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({
+class _CompactInfoRow extends StatelessWidget {
+  const _CompactInfoRow({
+    required this.icon,
+    required this.iconColor,
+    required this.text,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(top: 2.h),
+          child: Icon(icon, size: 14.r, color: iconColor),
+        ),
+        SizedBox(width: 6.w),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 12.sp,
+              color: AppTheme.textColor.withValues(alpha: 0.8),
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailItem extends StatelessWidget {
+  const _DetailItem({
     required this.icon,
     required this.iconColor,
     required this.label,
@@ -210,63 +390,61 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 10.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 28.w,
-            height: 28.w,
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8.r),
-            ),
-            child: Icon(icon, size: 15.r, color: iconColor),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28.w,
+          height: 28.w,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8.r),
           ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11.sp,
-                    color: AppTheme.subTextColor,
-                  ),
+          child: Icon(icon, size: 15.r, color: iconColor),
+        ),
+        SizedBox(width: 10.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  color: AppTheme.subTextColor,
+                  fontWeight: FontWeight.w500,
                 ),
-                SizedBox(height: 2.h),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 13.sp,
-                    color: AppTheme.textColor,
-                    fontWeight: FontWeight.w600,
-                    height: 1.4,
-                  ),
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: AppTheme.textColor,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class FineResolveSection extends StatelessWidget {
-  const FineResolveSection({required this.items, super.key});
-  final List<String> items;
+class _ResolutionUnitsSection extends StatelessWidget {
+  const _ResolutionUnitsSection({required this.units});
+  final List<ResolutionUnit> units;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: EdgeInsets.only(top: 2.h),
+      width: double.infinity,
       padding: EdgeInsets.all(12.w),
       decoration: BoxDecoration(
-        color: AppTheme.primaryBgColor,
-        borderRadius: BorderRadius.circular(26.r),
+        color: AppTheme.primaryBgColor.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(16.r),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,14 +453,14 @@ class FineResolveSection extends StatelessWidget {
             children: [
               Icon(
                 IconlyBold.location,
-                size: 14.r,
+                size: 15.r,
                 color: AppTheme.primaryColor,
               ),
               SizedBox(width: 6.w),
               Text(
                 'discovery_field_resolve_location'.tr,
                 style: TextStyle(
-                  fontSize: 11.sp,
+                  fontSize: 12.sp,
                   color: AppTheme.primaryColor,
                   fontWeight: FontWeight.w700,
                 ),
@@ -290,19 +468,49 @@ class FineResolveSection extends StatelessWidget {
             ],
           ),
           SizedBox(height: 8.h),
-          ...items.map(
-            (item) => Padding(
-              padding: EdgeInsets.only(bottom: 4.h),
-              child: Text(
-                item,
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: AppTheme.textColor,
-                  height: 1.5,
-                ),
+          ...units.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final unit = entry.value;
+            return Padding(
+              padding: EdgeInsets.only(bottom: idx < units.length - 1 ? 8.h : 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${idx + 1}. ${unit.name}',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textColor,
+                      height: 1.35,
+                    ),
+                  ),
+                  if (unit.address.isNotEmpty) ...[
+                    SizedBox(height: 2.h),
+                    Text(
+                      unit.address,
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: AppTheme.subTextColor,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                  if (unit.phone != null && unit.phone!.isNotEmpty) ...[
+                    SizedBox(height: 2.h),
+                    Text(
+                      'SĐT: ${unit.phone}',
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: AppTheme.primaryColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ),
     );
