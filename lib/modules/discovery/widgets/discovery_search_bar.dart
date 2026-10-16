@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
 
+import '../../../../routes/app_pages.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../widgets/custom_text_field.dart';
 import '../../../../widgets/primary_button.dart';
@@ -73,36 +74,60 @@ class DiscoverySearchBar extends StatelessWidget {
                   ],
                 ),
               ),
+              SizedBox(width: 8.w),
+              InkWell(
+                onTap: () => Get.toNamed(Routes.VIOLATION_SUBSCRIPTION),
+                borderRadius: BorderRadius.circular(12.r),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(
+                      color: AppTheme.primaryColor.withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        IconlyBroken.notification,
+                        size: 15.sp,
+                        color: AppTheme.primaryColor,
+                      ),
+                      SizedBox(width: 5.w),
+                      Text(
+                        'violation_sub_nav_btn'.tr,
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
           SizedBox(height: 14.h),
           Obx(
-            () => SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _VehicleChip(
-                    label: 'discovery_vehicle_car'.tr,
-                    icon: Icons.directions_car_rounded,
-                    isSelected: controller.selectedVehicle.value == '1',
-                    onTap: () => controller.setVehicle('1'),
-                  ),
-                  SizedBox(width: 8.w),
-                  _VehicleChip(
-                    label: 'discovery_vehicle_motorcycle'.tr,
-                    icon: Icons.two_wheeler_rounded,
-                    isSelected: controller.selectedVehicle.value == '2',
-                    onTap: () => controller.setVehicle('2'),
-                  ),
-                  SizedBox(width: 8.w),
-                  _VehicleChip(
-                    label: 'discovery_vehicle_electric'.tr,
-                    icon: Icons.electric_moped_rounded,
-                    isSelected: controller.selectedVehicle.value == '3',
-                    onTap: () => controller.setVehicle('3'),
-                  ),
-                ],
-              ),
+            () => Row(
+              children: [
+                _VehicleChip(
+                  label: 'discovery_vehicle_car'.tr,
+                  icon: Icons.directions_car_rounded,
+                  isSelected: controller.selectedVehicle.value == '1',
+                  onTap: () => controller.setVehicle('1'),
+                ),
+                SizedBox(width: 8.w),
+                _VehicleChip(
+                  label: 'discovery_vehicle_motorcycle'.tr,
+                  icon: Icons.two_wheeler_rounded,
+                  isSelected: controller.selectedVehicle.value == '2',
+                  onTap: () => controller.setVehicle('2'),
+                ),
+              ],
             ),
           ),
           SizedBox(height: 12.h),

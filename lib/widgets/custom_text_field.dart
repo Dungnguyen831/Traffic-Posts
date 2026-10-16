@@ -20,6 +20,7 @@ class CustomTextField extends StatefulWidget {
   final ValueChanged<String>? onSubmitted;
   final ValueChanged<String>? onChanged;
   final BorderRadius? borderRadius;
+  final TextCapitalization textCapitalization;
   // Trailing logic params
   final bool isLoading;
   final bool showClearButton;
@@ -43,6 +44,7 @@ class CustomTextField extends StatefulWidget {
     this.onSubmitted,
     this.onChanged,
     this.borderRadius,
+    this.textCapitalization = TextCapitalization.none,
     this.isLoading = false,
     this.showClearButton = false,
     this.onClear,
@@ -126,6 +128,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
                 obscureText: widget.isPassword && _isObscure,
                 keyboardType: widget.keyboardType,
                 textInputAction: widget.textInputAction,
+                textCapitalization: widget.textCapitalization,
                 maxLines: widget.maxLines,
                 minLines: widget.minLines,
                 onSubmitted: widget.onSubmitted,
