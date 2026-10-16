@@ -76,6 +76,36 @@ class DiscoverySearchBar extends StatelessWidget {
             ],
           ),
           SizedBox(height: 14.h),
+          Obx(
+            () => SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _VehicleChip(
+                    label: 'discovery_vehicle_car'.tr,
+                    icon: Icons.directions_car_rounded,
+                    isSelected: controller.selectedVehicle.value == '1',
+                    onTap: () => controller.setVehicle('1'),
+                  ),
+                  SizedBox(width: 8.w),
+                  _VehicleChip(
+                    label: 'discovery_vehicle_motorcycle'.tr,
+                    icon: Icons.two_wheeler_rounded,
+                    isSelected: controller.selectedVehicle.value == '2',
+                    onTap: () => controller.setVehicle('2'),
+                  ),
+                  SizedBox(width: 8.w),
+                  _VehicleChip(
+                    label: 'discovery_vehicle_electric'.tr,
+                    icon: Icons.electric_moped_rounded,
+                    isSelected: controller.selectedVehicle.value == '3',
+                    onTap: () => controller.setVehicle('3'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: 12.h),
           Row(
             children: [
               Expanded(
@@ -101,6 +131,57 @@ class DiscoverySearchBar extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VehicleChip extends StatelessWidget {
+  const _VehicleChip({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 7.h),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryColor : AppTheme.backgroundColor,
+          borderRadius: BorderRadius.circular(20.r),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : AppTheme.dividerColor,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16.r,
+              color: isSelected ? Colors.white : AppTheme.subTextColor,
+            ),
+            SizedBox(width: 6.w),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.sp,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? Colors.white : AppTheme.textColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

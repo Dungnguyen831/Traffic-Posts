@@ -42,7 +42,14 @@ class DiscoveryView extends GetView<DiscoveryController> {
                   children: [
                     if (response.dataInfo != null)
                       DiscoverySummaryBanner(info: response.dataInfo!),
-                    Expanded(child: FineResultList(records: response.data)),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: () =>
+                            controller.searchFines(forceRefresh: true),
+                        color: AppTheme.primaryColor,
+                        child: FineResultList(records: response.data),
+                      ),
+                    ),
                   ],
                 );
               }),
