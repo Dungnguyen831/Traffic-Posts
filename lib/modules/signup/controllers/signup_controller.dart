@@ -40,18 +40,13 @@ class SignupController extends GetxController {
 
   @override
   void onClose() {
-    usernameController.dispose();
-    fullNameController.dispose();
-    passwordController.dispose();
-    confirmPasswordController.dispose();
-
-    usernameFocusNode.dispose();
-    emailFocusNode.dispose();
-    nameFocusNode.dispose();
-    passwordFocusNode.dispose();
-    phoneFocusNode.dispose();
-    // addressFocusNode.dispose();
-    confirmPasswordFocusNode.dispose();
+    usernameFocusNode.unfocus();
+    emailFocusNode.unfocus();
+    nameFocusNode.unfocus();
+    passwordFocusNode.unfocus();
+    phoneFocusNode.unfocus();
+    confirmPasswordFocusNode.unfocus();
+    // Do not call dispose() here so the controller remains valid if reused across route transitions
     super.onClose();
   }
 

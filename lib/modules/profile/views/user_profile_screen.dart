@@ -11,6 +11,7 @@ import '../../../services/assets_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_dialog.dart';
 import '../../../widgets/loading_widget.dart';
+import '../../../widgets/reputation_badge.dart';
 import '../../dashboard/widgets/post_item.dart';
 import '../../dashboard/widgets/post_item_shimmer.dart';
 import '../controllers/user_profile_controller.dart';
@@ -20,7 +21,9 @@ class UserProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(UserProfileController());
+    final String targetId =
+        Get.arguments?['userId']?.toString() ?? 'my_profile';
+    final controller = Get.put(UserProfileController(), tag: targetId);
     final heroTag = Get.arguments?['heroTag']?.toString();
     final initialAvatarUrl = Get.arguments?['initialAvatarUrl']?.toString();
     final initialUserName = Get.arguments?['initialUserName']?.toString();
@@ -225,7 +228,6 @@ class UserProfileScreen extends StatelessWidget {
                       ),
                     ),
                     SizedBox(height: 12.h),
-                    SizedBox(height: 12.h),
                     Text(
                       displayUserName,
                       style: TextStyle(
@@ -234,17 +236,32 @@ class UserProfileScreen extends StatelessWidget {
                         color: AppTheme.textColor,
                       ),
                     ),
-                    SizedBox(height: 28.h),
+                    if (user != null) ...[
+                      SizedBox(height: 8.h),
+                      ReputationBadgeWidget(
+                        badge: user.badge ?? 'Người dẫn đường',
+                        score: user.reputationScore ?? 100,
+                        isCompact: true,
+                        showScore: true,
+                      ),
+                    ],
+                    SizedBox(height: 20.h),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _buildStatItem(
                           '${user?.followingsCount ?? 0}',
                           'profile_stat_following'.tr,
+                          onTap: controller.isMyProfile
+                              ? () => controller.openFollowManagement(initialIndex: 1)
+                              : null,
                         ),
                         _buildStatItem(
                           '${user?.followersCount ?? 0}',
                           'profile_stat_followers'.tr,
+                          onTap: controller.isMyProfile
+                              ? () => controller.openFollowManagement(initialIndex: 0)
+                              : null,
                         ),
                         _buildStatItem(
                           '${controller.totalLikes.value}',
@@ -363,23 +380,43 @@ class UserProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatItem(String number, String label) {
-    return Column(
-      children: [
-        Text(
-          number,
-          style: TextStyle(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textColor,
+  Widget _buildStatItem(
+    String number,
+    String label, {
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12.r),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
+          child: Column(
+            children: [
+              Text(
+                number,
+                style: TextStyle(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textColor,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  color: onTap != null
+                      ? AppTheme.primaryColor
+                      : AppTheme.subTextColor,
+                  fontWeight: onTap != null ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ],
           ),
         ),
-        SizedBox(height: 4.h),
-        Text(
-          label,
-          style: TextStyle(fontSize: 13.sp, color: AppTheme.subTextColor),
-        ),
-      ],
+      ),
     );
   }
 }

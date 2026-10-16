@@ -13,6 +13,9 @@ import '../../../data/repositories/user_repository.dart';
 import '../../../data/services/api_service.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/storage_service.dart';
+import '../../emergency/controllers/emergency_controller.dart';
+import '../../../data/services/sos_stream_service.dart';
+import '../../login/controllers/login_controller.dart';
 import '../../home/controllers/home_controller.dart';
 
 class ProfileController extends GetxController {
@@ -38,6 +41,11 @@ class ProfileController extends GetxController {
   // Flag để kiểm tra dữ liệu đã được load chưa
   var isDataLoaded = false.obs;
   var isProvincesLoaded = false.obs;
+
+  // Điểm uy tín và huy hiệu
+  var reputationScore = StorageService.to.getReputationScore().obs;
+  var badge = StorageService.to.getBadge().obs;
+  var canCreatePost = StorageService.to.canCreatePost().obs;
 
   @override
   void onInit() {
@@ -98,10 +106,22 @@ class ProfileController extends GetxController {
       addressController.text = user.province ?? "";
       relativePhoneController.text = user.relativePhone ?? "";
 
+      final score = user.reputationScore ?? 100;
+      final badgeName = user.badge ?? 'Người dẫn đường';
+      final canPost = user.canCreatePost ?? (score >= 80);
+
+      reputationScore.value = score;
+      badge.value = badgeName;
+      canCreatePost.value = canPost;
+
       StorageService.to.saveUserInfo(
         fullname: user.fullname,
         province: user.province,
         relativePhone: user.relativePhone,
+        phoneNumber: user.phoneNumber,
+        reputationScore: score,
+        badge: badgeName,
+        canCreatePost: canPost,
       );
 
       // Set selected province
@@ -200,6 +220,9 @@ class ProfileController extends GetxController {
         province: updatedUser.province,
         relativePhone: updatedUser.relativePhone,
         phoneNumber: updatedUser.phoneNumber,
+        reputationScore: reputationScore.value,
+        badge: badge.value,
+        canCreatePost: canCreatePost.value,
       );
 
       homeController.completeUpload();
@@ -247,7 +270,24 @@ class ProfileController extends GetxController {
         await storage.removeToken();
         await storage.clearCredentials();
         await storage.clearUserInfo();
+        await storage.clearActiveSos();
         ApiService().clearToken();
+
+        // Xóa các controller cache / permanent để tránh rò rỉ dữ liệu hoặc dùng lại controller đã đóng
+        if (Get.isRegistered<EmergencyController>()) {
+          Get.find<EmergencyController>().resetSosState();
+          Get.delete<EmergencyController>(force: true);
+        }
+        if (Get.isRegistered<LoginController>()) {
+          Get.delete<LoginController>(force: true);
+        }
+        if (Get.isRegistered<ProfileController>()) {
+          Get.delete<ProfileController>(force: true);
+        }
+        if (Get.isRegistered<SosStreamService>()) {
+          Get.delete<SosStreamService>(force: true);
+        }
+
         Get.offAllNamed(Routes.LOGIN);
       },
     );

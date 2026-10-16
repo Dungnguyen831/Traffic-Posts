@@ -11,6 +11,8 @@ import '../../../data/repositories/user_repository.dart';
 import '../../../services/storage_service.dart';
 import '../../dashboard/controllers/dashboard_controller.dart';
 import '../../dashboard/widgets/report_bottom_sheet.dart';
+import '../../../routes/app_pages.dart';
+import 'profile_controller.dart';
 
 class UserProfileController extends GetxController {
   // profile cache
@@ -168,6 +170,27 @@ class UserProfileController extends GetxController {
       userInfo.value = newUserInfo;
       isFollowing.value = newUserInfo.follow ?? false;
 
+      // Đồng bộ điểm uy tín và huy hiệu vào ProfileController và StorageService nếu là profile của chính mình
+      if (isMyProfile) {
+        StorageService.to.saveUserReputation(
+          score: newUserInfo.reputationScore,
+          badge: newUserInfo.badge,
+          canCreatePost: newUserInfo.canCreatePost,
+        );
+        if (Get.isRegistered<ProfileController>()) {
+          final pc = Get.find<ProfileController>();
+          if (newUserInfo.reputationScore != null) {
+            pc.reputationScore.value = newUserInfo.reputationScore!;
+          }
+          if (newUserInfo.badge != null) {
+            pc.badge.value = newUserInfo.badge!;
+          }
+          if (newUserInfo.canCreatePost != null) {
+            pc.canCreatePost.value = newUserInfo.canCreatePost!;
+          }
+        }
+      }
+
       if (newPosts.isEmpty) {
         hasMore.value = false;
         if (refresh) {
@@ -269,6 +292,18 @@ class UserProfileController extends GetxController {
       }
       CustomAlert.showError('Không thể thực hiện. Vui lòng thử lại!');
     }
+  }
+
+  /// Mở màn hình quản lý theo dõi (Người theo dõi / Đang theo dõi)
+  void openFollowManagement({int initialIndex = 0}) {
+    if (!isMyProfile) return;
+    Get.toNamed(
+      Routes.FOLLOW_MANAGEMENT,
+      arguments: {'initialIndex': initialIndex},
+    )?.then((_) {
+      // Làm mới lại số lượng người theo dõi và đang theo dõi sau khi trở về
+      loadProfileData(refresh: true, showLoading: false);
+    });
   }
 
   /// Toggle like/unlike post

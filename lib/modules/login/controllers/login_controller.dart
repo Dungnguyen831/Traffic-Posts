@@ -15,17 +15,16 @@ class LoginController extends GetxController {
   final AuthRepository _authRepository = Get.find<AuthRepository>();
   final StorageService _storageService = Get.find<StorageService>();
 
-  late TextEditingController usernameController;
-  late TextEditingController passwordController;
+  TextEditingController usernameController = TextEditingController();
+  TextEditingController passwordController = TextEditingController();
 
-  final usernameFocusNode = FocusNode();
-  final passwordFocusNode = FocusNode();
+  FocusNode usernameFocusNode = FocusNode();
+  FocusNode passwordFocusNode = FocusNode();
 
   @override
   void onInit() {
     super.onInit();
-    usernameController = TextEditingController();
-    passwordController = TextEditingController();
+    _initControllers();
 
     // Clear focus and keyboard state on init to prevent keyboard event issues
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -34,16 +33,26 @@ class LoginController extends GetxController {
     });
   }
 
+  void _initControllers() {
+    usernameController = TextEditingController();
+    passwordController = TextEditingController();
+    usernameFocusNode = FocusNode();
+    passwordFocusNode = FocusNode();
+  }
+
+  void clearControllers() {
+    usernameController.clear();
+    passwordController.clear();
+  }
+
   @override
   void onClose() {
-    // Unfocus before disposing to clear keyboard state
+    // Unfocus before closing to clear keyboard state
     usernameFocusNode.unfocus();
     passwordFocusNode.unfocus();
-
-    usernameController.dispose();
-    passwordController.dispose();
-    usernameFocusNode.dispose();
-    passwordFocusNode.dispose();
+    // Do not call dispose() on text controllers here to prevent
+    // 'TextEditingController was used after being disposed' crash
+    // if LoginController is reused across navigation/logout cycles.
     super.onClose();
   }
 
@@ -87,6 +96,9 @@ class LoginController extends GetxController {
         province: loginResponse.province,
         relativePhone: loginResponse.relativePhone,
         phoneNumber: loginResponse.phoneNumber,
+        reputationScore: loginResponse.reputationScore,
+        badge: loginResponse.badge,
+        canCreatePost: loginResponse.canCreatePost,
       );
 
       debugPrint('==== 🕵️ KIỂM TRA KHO LƯU TRỮ SAU KHI ĐĂNG NHẬP ====');

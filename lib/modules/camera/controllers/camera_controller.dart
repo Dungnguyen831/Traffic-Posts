@@ -9,9 +9,11 @@ import 'package:intl/intl.dart';
 
 import '../../../data/repositories/traffic_post_repository.dart';
 import '../../../services/image_picker_service.dart';
+import '../../../services/storage_service.dart';
 import '../../../widgets/custom_alert.dart';
 import '../../dashboard/controllers/dashboard_controller.dart';
 import '../../home/controllers/home_controller.dart';
+import '../../profile/controllers/profile_controller.dart';
 
 class CameraController extends GetxController {
   ImagePicker get _picker => ImagePickerService.to.picker;
@@ -42,11 +44,18 @@ class CameraController extends GetxController {
   final currentLat = 0.0.obs;
   final currentLng = 0.0.obs;
 
+  final canCreatePost = true.obs;
+
   @override
   void onInit() {
     super.onInit();
+    checkCanCreatePost();
     _updateTime();
     _getCurrentLocation();
+  }
+
+  void checkCanCreatePost() {
+    canCreatePost.value = StorageService.to.canCreatePost();
   }
 
   @override
@@ -158,6 +167,14 @@ class CameraController extends GetxController {
   }
 
   void onActionTap() {
+    checkCanCreatePost();
+    if (!canCreatePost.value) {
+      CustomAlert.showWarning(
+        'reputation_cannot_post_alert'.tr,
+        duration: const Duration(seconds: 4),
+      );
+      return;
+    }
     if (hasImage.value) {
       _sendPost();
     } else {
@@ -166,6 +183,14 @@ class CameraController extends GetxController {
   }
 
   Future<void> _sendPost() async {
+    if (!StorageService.to.canCreatePost()) {
+      CustomAlert.showWarning(
+        'reputation_cannot_post_alert'.tr,
+        duration: const Duration(seconds: 4),
+      );
+      return;
+    }
+
     if (contentController.text.trim().isEmpty) {
       CustomAlert.showWarning('camera_please_enter_content'.tr);
       return;
@@ -246,6 +271,10 @@ class CameraController extends GetxController {
           final dashboardController = Get.find<DashboardController>();
           if (homeController.currentIndex.value == 0) {
             dashboardController.prependPost(post);
+          }
+          // Refresh profile để cập nhật điểm mới nhất sau khi đăng bài
+          if (Get.isRegistered<ProfileController>()) {
+            Get.find<ProfileController>().loadUserProfile(forceRefresh: true);
           }
           CustomAlert.showSuccess('camera_post_success'.tr);
         })

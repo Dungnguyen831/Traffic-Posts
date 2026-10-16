@@ -2,30 +2,43 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class UserInfoModel {
   final int? id;
+  final String? username;
   final String? fullname;
   final String? avatarUrl;
   final bool? follow;
   final int? followersCount;
   final int? followingsCount;
+  final int? reputationScore;
+  final String? badge;
+  final bool? canCreatePost;
 
   UserInfoModel({
     this.id,
+    this.username,
     this.fullname,
     this.avatarUrl,
     this.follow,
     this.followersCount,
     this.followingsCount,
+    this.reputationScore,
+    this.badge,
+    this.canCreatePost,
   });
 
   // Chuyển từ JSON của API sang Object Dart
   factory UserInfoModel.fromJson(Map<String, dynamic> json) {
+    final score = json['reputationScore'] as int? ?? 100;
     return UserInfoModel(
       id: json['id'] as int?,
-      fullname: json['fullname'] as String?,
+      username: json['username'] as String?,
+      fullname: (json['fullname'] ?? json['fullName']) as String?,
       avatarUrl: json['avatarUrl'] as String?,
       follow: json['follow'] as bool?,
       followersCount: json['followersCount'] as int?,
       followingsCount: json['followingsCount'] as int?,
+      reputationScore: score,
+      badge: json['badge'] as String? ?? 'Người dẫn đường',
+      canCreatePost: json['canCreatePost'] as bool? ?? (score >= 80),
     );
   }
 
@@ -33,11 +46,15 @@ class UserInfoModel {
   Map<String, dynamic> toJson() {
     return {
       if (id != null) 'id': id,
+      if (username != null) 'username': username,
       if (fullname != null) 'fullname': fullname,
       if (avatarUrl != null) 'avatarUrl': avatarUrl,
       if (follow != null) 'follow': follow,
       if (followersCount != null) 'followersCount': followersCount,
       if (followingsCount != null) 'followingsCount': followingsCount,
+      if (reputationScore != null) 'reputationScore': reputationScore,
+      if (badge != null) 'badge': badge,
+      if (canCreatePost != null) 'canCreatePost': canCreatePost,
     };
   }
 
@@ -55,22 +72,29 @@ class UserInfoModel {
     return '$baseUrl/uploads/$avatarUrl';
   }
 
-  // Dán vào bên trong class UserInfoModel nhé
   UserInfoModel copyWith({
     int? id,
+    String? username,
     String? fullname,
     String? avatarUrl,
     bool? follow,
     int? followersCount,
     int? followingsCount,
+    int? reputationScore,
+    String? badge,
+    bool? canCreatePost,
   }) {
     return UserInfoModel(
       id: id ?? this.id,
+      username: username ?? this.username,
       fullname: fullname ?? this.fullname,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       follow: follow ?? this.follow,
       followersCount: followersCount ?? this.followersCount,
       followingsCount: followingsCount ?? this.followingsCount,
+      reputationScore: reputationScore ?? this.reputationScore,
+      badge: badge ?? this.badge,
+      canCreatePost: canCreatePost ?? this.canCreatePost,
     );
   }
 }

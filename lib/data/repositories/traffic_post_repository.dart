@@ -130,6 +130,12 @@ class TrafficPostRepository {
       final postData = response.data['data'] ?? response.data;
       return TrafficPostModel.fromJson(postData as Map<String, dynamic>);
     } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        if (e.response?.data is Map && e.response!.data['message'] != null) {
+          throw e.response!.data['message'].toString();
+        }
+        throw 'Bạn cần tối thiểu 80 điểm uy tín để đăng bài. Hãy tiếp tục tương tác tích cực để khôi phục quyền đăng bài.';
+      }
       if (e.response != null && e.response!.data is Map) {
         throw e.response!.data['message'] ?? 'Không thể tạo bài viết';
       }

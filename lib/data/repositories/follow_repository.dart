@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../models/user_info_model.dart';
 import '../services/api_service.dart';
 
 class FollowRepository {
@@ -20,13 +21,22 @@ class FollowRepository {
   }
 
   /// Lấy danh sách đang theo dõi
-  Future<dynamic> getFollowings() async {
+  Future<List<UserInfoModel>> getFollowings() async {
     try {
       final response = await _apiService.dio.get('/follow/followings');
-      return response.data;
+      final data = response.data;
+      List<dynamic> list = [];
+      if (data is Map && data['data'] is List) {
+        list = data['data'] as List;
+      } else if (data is List) {
+        list = data;
+      }
+      return list
+          .map((json) => UserInfoModel.fromJson(json as Map<String, dynamic>))
+          .toList();
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể tải danh sách';
+        throw e.response!.data['message'] ?? 'Không thể tải danh sách đang theo dõi';
       }
       throw 'Lỗi kết nối mạng';
     } catch (e) {
@@ -35,13 +45,22 @@ class FollowRepository {
   }
 
   /// Lấy danh sách người theo dõi mình
-  Future<dynamic> getFollowers() async {
+  Future<List<UserInfoModel>> getFollowers() async {
     try {
       final response = await _apiService.dio.get('/follow/followers');
-      return response.data;
+      final data = response.data;
+      List<dynamic> list = [];
+      if (data is Map && data['data'] is List) {
+        list = data['data'] as List;
+      } else if (data is List) {
+        list = data;
+      }
+      return list
+          .map((json) => UserInfoModel.fromJson(json as Map<String, dynamic>))
+          .toList();
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể tải danh sách';
+        throw e.response!.data['message'] ?? 'Không thể tải danh sách người theo dõi';
       }
       throw 'Lỗi kết nối mạng';
     } catch (e) {

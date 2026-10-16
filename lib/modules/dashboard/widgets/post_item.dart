@@ -6,6 +6,7 @@ import 'package:iconly/iconly.dart';
 
 import '../../../data/models/traffic_post_model.dart';
 import '../../../widgets/loading_widget.dart';
+import '../../../widgets/reputation_badge.dart';
 import '../../profile/views/user_profile_screen.dart';
 import 'like_icon.dart';
 
@@ -232,15 +233,31 @@ class PostItem extends StatelessWidget {
                         );
                       }
                     },
-                    child: Text(
-                      post.userName ?? 'Người dùng',
-                      style: TextStyle(
-                        fontSize: 15.2.sp,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF1C1C1E),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            post.userName ?? 'Người dùng',
+                            style: TextStyle(
+                              fontSize: 15.2.sp,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1C1C1E),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 6.w),
+                        ReputationBadgeWidget(
+                          badge: (post.userBadge != null &&
+                                  post.userBadge!.trim().isNotEmpty)
+                              ? post.userBadge!
+                              : 'Người dẫn đường',
+                          score: post.userReputationScore,
+                          isCompact: true,
+                        ),
+                      ],
                     ),
                   ),
                 ),

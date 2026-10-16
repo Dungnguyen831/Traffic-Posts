@@ -17,8 +17,14 @@ class UserRepository {
     try {
       final response = await _apiService.dio.get('/users/profile');
 
-      // Nếu API trả về thành công 200 OK
-      return ProfileRequest.fromJson(response.data);
+      final rawData = response.data;
+      final Map<String, dynamic> data = (rawData is Map && rawData['data'] is Map)
+          ? Map<String, dynamic>.from(rawData['data'] as Map)
+          : (rawData is Map
+              ? Map<String, dynamic>.from(rawData)
+              : <String, dynamic>{});
+
+      return ProfileRequest.fromJson(data);
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
         throw e.response!.data['message'] ?? 'Không thể tải thông tin cá nhân';
@@ -112,6 +118,37 @@ class UserRepository {
       throw 'Lỗi kết nối mạng. Vui lòng kiểm tra lại Internet.';
     } catch (e) {
       throw 'Có lỗi xảy ra: ${e.toString()}';
+    }
+  }
+
+  // 4. Lấy bảng xếp hạng uy tín (GET /users/ranking)
+  Future<List<UserInfoModel>> getRanking({int page = 0, int size = 20}) async {
+    try {
+      final response = await _apiService.dio.get(
+        '/users/ranking',
+        queryParameters: {
+          'page': page,
+          'size': size,
+        },
+      );
+
+      final data = response.data['data'] ?? response.data;
+      if (data == null) return [];
+
+      final content = data is Map ? data['content'] : data;
+      if (content is List) {
+        return content
+            .map((e) => UserInfoModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      if (e.response != null && e.response!.data is Map) {
+        throw e.response!.data['message'] ?? 'Không thể tải bảng xếp hạng uy tín';
+      }
+      throw 'Lỗi kết nối khi tải bảng xếp hạng uy tín';
+    } catch (e) {
+      throw e.toString();
     }
   }
 }
