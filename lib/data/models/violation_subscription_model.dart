@@ -44,7 +44,7 @@ class ViolationSubscription {
     return ViolationSubscription(
       id: json['id'] as int?,
       licensePlate: normalizePlate(json['licensePlate'] as String? ?? ''),
-      enabled: json['enabled'] as bool? ?? true,
+      enabled: (json['enabled'] ?? json['receiveNotificationsForBoth'] ?? true) as bool,
     );
   }
 
@@ -53,6 +53,7 @@ class ViolationSubscription {
       if (id != null) 'id': id,
       'licensePlate': normalizePlate(licensePlate),
       'enabled': enabled,
+      'receiveNotificationsForBoth': enabled,
     };
   }
 

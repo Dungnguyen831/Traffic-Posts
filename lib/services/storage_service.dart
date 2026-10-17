@@ -190,7 +190,26 @@ class StorageService extends GetxService {
     return _prefs.getBool('user_canCreatePost') ?? (getReputationScore() >= 80);
   }
 
+  Future<void> setUnsubscribedPlate(String plate) async {
+    final uid = getUserId();
+    final key = uid != null ? 'unsubscribed_plate_$uid' : 'unsubscribed_plate';
+    await _prefs.setString(key, plate);
+  }
+
+  String? getUnsubscribedPlate() {
+    final uid = getUserId();
+    final key = uid != null ? 'unsubscribed_plate_$uid' : 'unsubscribed_plate';
+    return _prefs.getString(key);
+  }
+
+  Future<void> clearUnsubscribedPlate() async {
+    final uid = getUserId();
+    final key = uid != null ? 'unsubscribed_plate_$uid' : 'unsubscribed_plate';
+    await _prefs.remove(key);
+  }
+
   Future<void> clearUserInfo() async {
+    await clearUnsubscribedPlate();
     await _prefs.remove('user_id');
     await _prefs.remove('user_username');
     await _prefs.remove('user_fullname');

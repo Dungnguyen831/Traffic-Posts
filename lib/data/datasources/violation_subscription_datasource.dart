@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
+
 import '../models/violation_subscription_model.dart';
 import '../services/api_service.dart';
 
@@ -8,6 +10,7 @@ abstract class ViolationSubscriptionRemoteDataSource {
   Future<String> subscribe(ViolationSubscriptionRequest request);
   Future<String> unsubscribe(String licensePlate);
   Future<String> unsubscribeAll();
+  Future<String> deleteTrackers();
 }
 
 class ViolationSubscriptionRemoteDataSourceImpl
@@ -21,12 +24,7 @@ class ViolationSubscriptionRemoteDataSourceImpl
   Future<List<ViolationSubscription>> getSubscriptions() async {
     final response = await _apiService.dio.get('/violations/subscription');
 
-    dynamic rawData = response.data;
-    if (rawData is String) {
-      try {
-        rawData = jsonDecode(rawData);
-      } catch (_) {}
-    }
+    final rawData = _decodeData(response.data);
 
     if (rawData is Map<String, dynamic>) {
       if (rawData['success'] == false) {
@@ -51,43 +49,27 @@ class ViolationSubscriptionRemoteDataSourceImpl
       data: request.toJson(),
     );
 
-    dynamic rawData = response.data;
-    if (rawData is String) {
-      try {
-        rawData = jsonDecode(rawData);
-      } catch (_) {}
-    }
-
-    if (rawData is Map<String, dynamic>) {
-      if (rawData['success'] == false) {
-        throw rawData['message'] ?? 'Đăng ký theo dõi thất bại';
-      }
-      return (rawData['message'] ?? 'Thao tác thành công').toString();
-    }
-    return 'Thao tác thành công';
+    return _parseMessage(response.data, 'Thao tác thành công', 'Đăng ký theo dõi thất bại');
   }
 
   @override
   Future<String> unsubscribe(String licensePlate) async {
-    final cleanPlate = ViolationSubscription.normalizePlate(licensePlate);
-    final response = await _apiService.dio.delete(
-      '/violations/subscription/$cleanPlate',
-    );
-
-    dynamic rawData = response.data;
-    if (rawData is String) {
-      try {
-        rawData = jsonDecode(rawData);
-      } catch (_) {}
-    }
-
-    if (rawData is Map<String, dynamic>) {
-      if (rawData['success'] == false) {
-        throw rawData['message'] ?? 'Hủy theo dõi thất bại';
+    final cleanPlate = Uri.encodeComponent(ViolationSubscription.normalizePlate(licensePlate));
+    try {
+      final response = await _apiService.dio.delete(
+        '/violations/subscription/$cleanPlate',
+      );
+      return _parseMessage(response.data, 'Đã hủy theo dõi biển số', 'Hủy theo dõi thất bại');
+    } on DioException catch (e) {
+      // Fallback sang endpoint DELETE /violations/subscription nếu route có path variable không tồn tại hoặc bị từ chối
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 405) {
+        final fallbackResponse = await _apiService.dio.delete(
+          '/violations/subscription',
+        );
+        return _parseMessage(fallbackResponse.data, 'Đã hủy theo dõi biển số', 'Hủy theo dõi thất bại');
       }
-      return (rawData['message'] ?? 'Đã hủy theo dõi biển số').toString();
+      rethrow;
     }
-    return 'Đã hủy theo dõi biển số';
   }
 
   @override
@@ -96,19 +78,35 @@ class ViolationSubscriptionRemoteDataSourceImpl
       '/violations/subscription',
     );
 
-    dynamic rawData = response.data;
-    if (rawData is String) {
+    return _parseMessage(response.data, 'Đã hủy toàn bộ theo dõi', 'Hủy toàn bộ theo dõi thất bại');
+  }
+
+  @override
+  Future<String> deleteTrackers() async {
+    final response = await _apiService.dio.delete(
+      '/violations/trackers',
+    );
+
+    return _parseMessage(response.data, 'Đã xóa trackers theo dõi', 'Xóa trackers thất bại');
+  }
+
+  dynamic _decodeData(dynamic raw) {
+    if (raw is String) {
       try {
-        rawData = jsonDecode(rawData);
+        return jsonDecode(raw);
       } catch (_) {}
     }
+    return raw;
+  }
 
-    if (rawData is Map<String, dynamic>) {
-      if (rawData['success'] == false) {
-        throw rawData['message'] ?? 'Hủy toàn bộ theo dõi thất bại';
+  String _parseMessage(dynamic raw, String defaultSuccess, String defaultError) {
+    final data = _decodeData(raw);
+    if (data is Map<String, dynamic>) {
+      if (data['success'] == false) {
+        throw data['message'] ?? defaultError;
       }
-      return (rawData['message'] ?? 'Đã hủy toàn bộ theo dõi').toString();
+      return (data['message'] ?? defaultSuccess).toString();
     }
-    return 'Đã hủy toàn bộ theo dõi';
+    return defaultSuccess;
   }
 }

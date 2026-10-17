@@ -42,8 +42,11 @@ class ViolationSubscriptionView
           ),
           centerTitle: true,
           actions: [
+            // Chỉ hiển thị nút xóa tất cả khi còn nhiều biển số (dữ liệu cũ cần dọn dẹp)
             Obx(() {
-              if (controller.subscriptions.isEmpty) return const SizedBox.shrink();
+              if (controller.subscriptions.length <= 1) {
+                return const SizedBox.shrink();
+              }
               return IconButton(
                 icon: Icon(
                   IconlyBroken.delete,
@@ -59,119 +62,154 @@ class ViolationSubscriptionView
         body: RefreshIndicator(
           onRefresh: controller.loadSubscriptions,
           color: AppTheme.primaryColor,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // 1. Form đăng ký theo dõi
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 8.h),
-                  child: _buildRegistrationCard(context),
-                ),
-              ),
-
-              // 2. Header danh sách đang theo dõi
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 10.h),
-                  child: Obx(
-                    () => Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '${'violation_sub_my_list'.tr} (${controller.subscriptions.length})',
-                          style: TextStyle(
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textColor,
-                          ),
-                        ),
-                        if (controller.isLoading.value)
-                          SizedBox(
-                            width: 16.r,
-                            height: 16.r,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppTheme.primaryColor,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // 3. Nội dung danh sách theo các trạng thái
-              Obx(() {
-                if (controller.isLoading.value &&
-                    controller.subscriptions.isEmpty) {
-                  return SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const LoadingWidget(),
-                          SizedBox(height: 12.h),
-                          Text(
-                            'profile_loading'.tr,
-                            style: TextStyle(
-                              color: AppTheme.subTextColor,
-                              fontSize: 13.sp,
-                            ),
-                          ),
-                        ],
+          child: Obx(() {
+            // Trạng thái đang tải lần đầu
+            if (controller.isLoading.value && controller.subscriptions.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const LoadingWidget(),
+                    SizedBox(height: 12.h),
+                    Text(
+                      'profile_loading'.tr,
+                      style: TextStyle(
+                        color: AppTheme.subTextColor,
+                        fontSize: 13.sp,
                       ),
                     ),
-                  );
-                }
+                  ],
+                ),
+              );
+            }
 
-                if (controller.errorMessage.isNotEmpty &&
-                    controller.subscriptions.isEmpty) {
-                  return SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _buildErrorState(),
-                  );
-                }
+            // Trạng thái lỗi tải dữ liệu
+            if (controller.errorMessage.isNotEmpty &&
+                controller.subscriptions.isEmpty) {
+              return _buildErrorState();
+            }
 
-                if (controller.subscriptions.isEmpty) {
-                  return SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _buildEmptyState(),
-                  );
-                }
-
-                return SliverPadding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final item = controller.subscriptions[index];
-                        return SubscriptionItemCard(
-                          key: ValueKey(item.licensePlate),
-                          item: item,
-                          onToggleEnabled: (newValue) =>
-                              controller.toggleNotificationStatus(item, newValue),
-                          onDelete: () =>
-                              controller.confirmDeleteSubscription(item),
-                        );
-                      },
-                      childCount: controller.subscriptions.length,
+            return CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                // Cảnh báo nếu tài khoản có nhiều hơn 1 biển số (dữ liệu cũ)
+                if (controller.subscriptions.length > 1)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 6.h),
+                      child: Container(
+                        padding: EdgeInsets.all(12.w),
+                        decoration: BoxDecoration(
+                          color: AppTheme.warningColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12.r),
+                          border: Border.all(
+                            color: AppTheme.warningColor.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              IconlyBroken.info_circle,
+                              color: AppTheme.warningColor,
+                              size: 18.sp,
+                            ),
+                            SizedBox(width: 8.w),
+                            Expanded(
+                              child: Text(
+                                'violation_sub_multiple_warning'.tr,
+                                style: TextStyle(
+                                  fontSize: 11.sp,
+                                  color: AppTheme.textColor,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                );
-              }),
 
-              SliverToBoxAdapter(
-                child: SizedBox(height: 40.h),
-              ),
-            ],
-          ),
+                // Khi CHƯA có biển số nào đăng ký: hiển thị form đăng ký duy nhất
+                if (controller.subscriptions.isEmpty) ...[
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 12.h),
+                      child: _buildRegistrationCard(context),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                      child: _buildEmptyState(),
+                    ),
+                  ),
+                ]
+                // Khi ĐÃ có đúng 1 biển số đăng ký: hiển thị Featured Card quản lý biển số duy nhất
+                else if (controller.subscriptions.length == 1) ...[
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 12.h),
+                      child: SubscriptionItemCard(
+                        key: ValueKey(controller.subscriptions.first.licensePlate),
+                        item: controller.subscriptions.first,
+                        isFeatured: true,
+                        onToggleEnabled: (newValue) => controller
+                            .toggleNotificationStatus(
+                                controller.subscriptions.first, newValue),
+                        onDelete: () => controller
+                            .confirmDeleteSubscription(controller.subscriptions.first),
+                        onChangePlate: () =>
+                            controller.showChangePlateDialog(context),
+                      ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 24.h),
+                      child: _buildPolicyCard(),
+                    ),
+                  ),
+                ]
+                // Khi có nhiều hơn 1 biển số (dữ liệu cũ): hiển thị danh sách để người dùng xóa bớt
+                else ...[
+                  SliverPadding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final item = controller.subscriptions[index];
+                          return SubscriptionItemCard(
+                            key: ValueKey(item.licensePlate),
+                            item: item,
+                            isFeatured: false,
+                            onToggleEnabled: (newValue) =>
+                                controller.toggleNotificationStatus(item, newValue),
+                            onDelete: () =>
+                                controller.confirmDeleteSubscription(item),
+                            onChangePlate: () =>
+                                controller.showChangePlateDialog(context),
+                          );
+                        },
+                        childCount: controller.subscriptions.length,
+                      ),
+                    ),
+                  ),
+                ],
+
+                SliverToBoxAdapter(
+                  child: SizedBox(height: 32.h),
+                ),
+              ],
+            );
+          }),
         ),
       ),
     );
   }
 
+  /// Khối nhập đăng ký biển số xe khi chưa có biển số nào
   Widget _buildRegistrationCard(BuildContext context) {
     return Container(
       padding: EdgeInsets.all(18.w),
@@ -192,8 +230,8 @@ class ViolationSubscriptionView
           Row(
             children: [
               Container(
-                width: 36.w,
-                height: 36.w,
+                width: 38.w,
+                height: 38.w,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: AppTheme.primaryColor.withValues(alpha: 0.1),
@@ -309,16 +347,63 @@ class ViolationSubscriptionView
     );
   }
 
+  /// Khối chính sách & thông tin hướng dẫn
+  Widget _buildPolicyCard() {
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(
+          color: AppTheme.primaryColor.withValues(alpha: 0.15),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                IconlyBroken.info_circle,
+                color: AppTheme.primaryColor,
+                size: 20.sp,
+              ),
+              SizedBox(width: 8.w),
+              Text(
+                'violation_sub_policy_title'.tr,
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            'violation_sub_policy_desc'.tr,
+            style: TextStyle(
+              fontSize: 12.sp,
+              color: AppTheme.textColor.withValues(alpha: 0.8),
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Trạng thái trống khi chưa có biển số nào được đăng ký
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 32.w),
+        padding: EdgeInsets.symmetric(horizontal: 20.w),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 80.w,
-              height: 80.w,
+              width: 72.w,
+              height: 72.w,
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
@@ -326,14 +411,14 @@ class ViolationSubscriptionView
               child: Icon(
                 IconlyBroken.paper,
                 color: AppTheme.primaryColor,
-                size: 38.sp,
+                size: 34.sp,
               ),
             ),
-            SizedBox(height: 16.h),
+            SizedBox(height: 14.h),
             Text(
               'violation_sub_empty_title'.tr,
               style: TextStyle(
-                fontSize: 16.sp,
+                fontSize: 15.sp,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textColor,
               ),
@@ -354,6 +439,7 @@ class ViolationSubscriptionView
     );
   }
 
+  /// Trạng thái lỗi tải dữ liệu
   Widget _buildErrorState() {
     return Center(
       child: Padding(

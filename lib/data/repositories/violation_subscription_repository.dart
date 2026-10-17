@@ -61,12 +61,58 @@ class ViolationSubscriptionRepository {
     }
   }
 
+  /// Đổi sang biển số mới: Hủy theo dõi biển cũ (nếu có) và đăng ký biển mới
+  Future<String> changePlate({
+    required String oldPlate,
+    required String newPlate,
+    required bool receiveNotificationsForBoth,
+  }) async {
+    final cleanOld = ViolationSubscription.normalizePlate(oldPlate);
+    final cleanNew = ViolationSubscription.normalizePlate(newPlate);
+
+    if (!ViolationSubscription.isValidPlate(cleanNew)) {
+      throw 'Biển số xe không đúng định dạng hợp lệ';
+    }
+
+    if (cleanOld.isNotEmpty && cleanOld != cleanNew) {
+      try {
+        await _dataSource.unsubscribe(cleanOld);
+      } catch (_) {
+        // Bỏ qua nếu biển cũ không tồn tại hoặc đã bị hủy trước đó
+      }
+    }
+
+    final request = ViolationSubscriptionRequest(
+      licensePlate: cleanNew,
+      receiveNotificationsForBoth: receiveNotificationsForBoth,
+    );
+
+    try {
+      return await _dataSource.subscribe(request);
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'Không thể cập nhật biển số mới');
+    } catch (e) {
+      throw e.toString();
+    }
+  }
+
   /// Hủy toàn bộ đăng ký theo dõi
   Future<String> unsubscribeAll() async {
     try {
       return await _dataSource.unsubscribeAll();
     } on DioException catch (e) {
       throw _handleDioError(e, 'Không thể hủy toàn bộ danh sách theo dõi');
+    } catch (e) {
+      throw e.toString();
+    }
+  }
+
+  /// Xóa trackers theo dõi vi phạm DELETE /violations/trackers
+  Future<String> deleteTrackers() async {
+    try {
+      return await _dataSource.deleteTrackers();
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'Không thể xóa trackers theo dõi');
     } catch (e) {
       throw e.toString();
     }
