@@ -17,6 +17,7 @@ import '../../emergency/controllers/emergency_controller.dart';
 import '../../../data/services/sos_stream_service.dart';
 import '../../login/controllers/login_controller.dart';
 import '../../home/controllers/home_controller.dart';
+import '../../map/controllers/map_controller.dart';
 
 class ProfileController extends GetxController {
   final UserRepository _userRepository = UserRepository();
@@ -115,6 +116,8 @@ class ProfileController extends GetxController {
       canCreatePost.value = canPost;
 
       StorageService.to.saveUserInfo(
+        userId: user.id,
+        username: user.username,
         fullname: user.fullname,
         province: user.province,
         relativePhone: user.relativePhone,
@@ -270,22 +273,33 @@ class ProfileController extends GetxController {
         await storage.removeToken();
         await storage.clearCredentials();
         await storage.clearUserInfo();
-        await storage.clearActiveSos();
+        // Không xóa active SOS ở đây để bảo lưu trạng thái SOS của user này trong local storage
         ApiService().clearToken();
 
-        // Xóa các controller cache / permanent để tránh rò rỉ dữ liệu hoặc dùng lại controller đã đóng
+        // 1. Ngắt ngay luồng phát tín hiệu và reset UI/state SOS về mặc định
         if (Get.isRegistered<EmergencyController>()) {
           Get.find<EmergencyController>().resetSosState();
           Get.delete<EmergencyController>(force: true);
         }
+
+        // 2. Ngắt kết nối SSE stream và xóa danh sách SOS realtime trên thiết bị
+        if (Get.isRegistered<SosStreamService>()) {
+          final sosStream = Get.find<SosStreamService>();
+          sosStream.disconnect();
+          sosStream.sosList.clear();
+          Get.delete<SosStreamService>(force: true);
+        }
+
+        // 3. Ngắt kết nối WebSocket map nếu đang mở
+        if (Get.isRegistered<MapController>()) {
+          Get.delete<MapController>(force: true);
+        }
+
         if (Get.isRegistered<LoginController>()) {
           Get.delete<LoginController>(force: true);
         }
         if (Get.isRegistered<ProfileController>()) {
           Get.delete<ProfileController>(force: true);
-        }
-        if (Get.isRegistered<SosStreamService>()) {
-          Get.delete<SosStreamService>(force: true);
         }
 
         Get.offAllNamed(Routes.LOGIN);

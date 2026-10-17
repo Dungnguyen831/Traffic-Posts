@@ -38,7 +38,7 @@ class EmergencyController extends GetxController {
   void onInit() {
     super.onInit();
     // Vừa mở app lên là kiểm tra phiên SOS cục bộ & trên server
-    _checkAndRestoreActiveSos();
+    checkAndRestoreActiveSos();
   }
 
   Future<void> onContinue() async {
@@ -84,76 +84,81 @@ class EmergencyController extends GetxController {
   }
 
   /// Tự động kiểm tra và khôi phục lượt SOS NẾU CHÍNH TÀI KHOẢN NÀY đang phát tín hiệu
-  Future<void> _checkAndRestoreActiveSos() async {
+  Future<void> checkAndRestoreActiveSos({int? targetUserId}) async {
     try {
-      final currentUserId = StorageService.to.getUserId();
+      final currentUserId = targetUserId ?? StorageService.to.getUserId();
       final currentPhone = (StorageService.to.getPhoneNumber() ?? '').trim();
       final currentUsername = (StorageService.to.getUsername() ?? '').trim();
 
-      // Nếu chưa có thông tin đăng nhập, không thể có active SOS của tài khoản
-      if (currentUserId == null && currentPhone.isEmpty && currentUsername.isEmpty) {
+      // Nếu chưa có ID tài khoản đăng nhập, dứt khoát không có active SOS của tài khoản
+      if (currentUserId == null) {
         resetSosState();
         return;
       }
 
-      final cached = StorageService.to.getActiveSos();
+      // 1. Đọc cache phiên SOS gắn chặt theo currentUserId
+      final cached = StorageService.to.getActiveSos(userId: currentUserId);
 
-      // Kiểm tra xem dữ liệu trong cache có thực sự thuộc về tài khoản hiện tại không
-      bool isCacheOwnedByMe = false;
-      if (cached != null) {
-        if (currentUserId != null && cached['userId'] != null) {
-          isCacheOwnedByMe = (currentUserId == cached['userId']);
-        } else if (currentPhone.isNotEmpty && cached['userPhone'] != null) {
-          isCacheOwnedByMe = (currentPhone == cached['userPhone']);
-        } else if (currentUsername.isNotEmpty && cached['username'] != null) {
-          isCacheOwnedByMe = (currentUsername == cached['username']);
-        }
+      // 2. Lấy danh sách SOS từ server
+      List<SosResponseDTO> actives = [];
+      bool serverSuccess = false;
+      try {
+        actives = await _sosRepo.getActiveSosAlerts();
+        serverSuccess = true;
+      } catch (e) {
+        debugPrint('[SOS] Lỗi khi lấy danh sách SOS active từ server: $e');
       }
-
-      // Nếu cache tồn tại nhưng thuộc về tài khoản khác (do đăng xuất trước đó), dọn dẹp ngay
-      if (cached != null && !isCacheOwnedByMe) {
-        await StorageService.to.clearActiveSos();
-      }
-
-      final actives = await _sosRepo.getActiveSosAlerts();
 
       SosResponseDTO? matched;
-      for (final sos in actives) {
-        bool isMyAlert = false;
+      if (serverSuccess) {
+        for (final sos in actives) {
+          bool isMyAlert = false;
 
-        // 1. So khớp ID người dùng (nếu backend trả về)
-        if (currentUserId != null && sos.userId != null && sos.userId == currentUserId) {
-          isMyAlert = true;
-        }
-        // 2. So khớp Username (nếu backend trả về)
-        else if (currentUsername.isNotEmpty && sos.username != null && sos.username!.isNotEmpty && sos.username == currentUsername) {
-          isMyAlert = true;
-        }
-        // 3. So khớp Số điện thoại / Username gửi kèm (phoneNumber lưu SĐT hoặc username lúc tạo)
-        else if (sos.phoneNumber != null && sos.phoneNumber!.isNotEmpty) {
-          final sosPhone = sos.phoneNumber!.trim();
-          if (currentPhone.isNotEmpty && sosPhone == currentPhone) {
-            isMyAlert = true;
-          } else if (currentUsername.isNotEmpty && sosPhone == currentUsername) {
+          // 1. So khớp ID người dùng (Ưu tiên cao nhất)
+          if (sos.userId != null) {
+            if (sos.userId == currentUserId) {
+              isMyAlert = true;
+            } else {
+              // Nếu sos có userId rõ ràng và khác currentUserId -> Chắc chắn của người khác!
+              continue;
+            }
+          }
+          // 2. So khớp theo ID lượt SOS NẾU cache thuộc về chính tài khoản này
+          else if (cached != null &&
+              cached['sosId'] != null &&
+              sos.sosId == cached['sosId']) {
             isMyAlert = true;
           }
-        }
-        // 4. So khớp theo ID lượt SOS NẾU cache đó đã được xác thực thuộc về chính tài khoản này
-        else if (isCacheOwnedByMe && cached != null && sos.sosId == cached['sosId']) {
-          isMyAlert = true;
-        }
+          // 3. So khớp Username (chỉ khi sos không có userId)
+          else if (currentUsername.isNotEmpty &&
+              sos.username != null &&
+              sos.username!.isNotEmpty &&
+              sos.username == currentUsername) {
+            isMyAlert = true;
+          }
+          // 4. So khớp Số điện thoại gửi kèm
+          else if (currentPhone.isNotEmpty &&
+              sos.phoneNumber != null &&
+              sos.phoneNumber!.trim().isNotEmpty &&
+              sos.phoneNumber!.trim() == currentPhone) {
+            isMyAlert = true;
+          }
 
-        if (isMyAlert) {
-          matched = sos;
-          break;
+          if (isMyAlert) {
+            matched = sos;
+            break;
+          }
         }
       }
 
       if (matched != null) {
         activeSosId.value = matched.sosId;
-        activeSosLat.value = matched.latitude ?? (isCacheOwnedByMe && cached != null ? (cached['lat'] as double) : 0.0);
-        activeSosLng.value = matched.longitude ?? (isCacheOwnedByMe && cached != null ? (cached['lng'] as double) : 0.0);
-        activeSosNote.value = matched.note ?? (isCacheOwnedByMe && cached != null ? (cached['note'] as String) : '');
+        activeSosLat.value = matched.latitude ??
+            (cached != null ? (cached['lat'] as num).toDouble() : 0.0);
+        activeSosLng.value = matched.longitude ??
+            (cached != null ? (cached['lng'] as num).toDouble() : 0.0);
+        activeSosNote.value = matched.note ??
+            (cached != null ? (cached['note'] as String) : '');
         isSosActive.value = true;
         isSheetMinimized.value = true;
 
@@ -167,16 +172,33 @@ class EmergencyController extends GetxController {
           username: currentUsername,
         );
 
-        debugPrint('🔄 Đã khôi phục thành công lượt SOS của tài khoản: ${matched.sosId} tại (${activeSosLat.value}, ${activeSosLng.value})');
-      } else {
-        // Tài khoản hiện tại không có SOS nào đang hoạt động
+        debugPrint(
+          '🔄 Đã khôi phục thành công lượt SOS của tài khoản $currentUserId: ${matched.sosId} tại (${activeSosLat.value}, ${activeSosLng.value})',
+        );
+      } else if (serverSuccess) {
+        // Server phản hồi thành công và tài khoản hiện tại KHÔNG có SOS nào đang hoạt động
         resetSosState();
-        if (isCacheOwnedByMe) {
-          await StorageService.to.clearActiveSos();
+        if (cached != null) {
+          await StorageService.to.clearActiveSos(userId: currentUserId);
         }
+      } else if (cached != null) {
+        // Mạng lỗi nhưng trong cache của chính currentUserId có SOS hợp lệ
+        activeSosId.value = cached['sosId'] ?? '';
+        activeSosLat.value = (cached['lat'] as num?)?.toDouble() ?? 0.0;
+        activeSosLng.value = (cached['lng'] as num?)?.toDouble() ?? 0.0;
+        activeSosNote.value = cached['note'] ?? '';
+        isSosActive.value = activeSosId.value.isNotEmpty;
+        isSheetMinimized.value = true;
+        debugPrint(
+          '🔄 Khôi phục tạm từ cache cho tài khoản $currentUserId: ${activeSosId.value}',
+        );
+      } else {
+        // Tài khoản hiện tại không có SOS nào
+        resetSosState();
       }
     } catch (e) {
       debugPrint('Lỗi khi kiểm tra khôi phục SOS: $e');
+      resetSosState();
     }
   }
 
@@ -267,15 +289,13 @@ class EmergencyController extends GetxController {
         await _sosRepo.cancelSosAlert(id);
       }
 
-      SosStreamService.to.sosList.removeWhere((sos) => sos.sosId == id);
-      await StorageService.to.clearActiveSos();
+      final currentUserId = StorageService.to.getUserId();
+      if (Get.isRegistered<SosStreamService>()) {
+        SosStreamService.to.sosList.removeWhere((sos) => sos.sosId == id);
+      }
+      await StorageService.to.clearActiveSos(userId: currentUserId);
 
-      isSosActive.value = false;
-      isSheetMinimized.value = false;
-      activeSosId.value = '';
-      activeSosLat.value = 0.0;
-      activeSosLng.value = 0.0;
-      activeSosNote.value = '';
+      resetSosState();
 
       CustomAlert.showSuccess('Đã đóng tín hiệu cứu hộ');
     } catch (e) {

@@ -6,6 +6,7 @@ import '../../../data/repositories/auth_repository.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/storage_service.dart';
 import '../../../widgets/custom_dialog.dart';
+import '../../emergency/controllers/emergency_controller.dart';
 
 class LoginController extends GetxController {
   var rememberMe = false.obs;
@@ -117,6 +118,13 @@ class LoginController extends GetxController {
         );
       } else {
         await _storageService.clearCredentials();
+      }
+
+      // Kiểm tra và khôi phục ngay phiên SOS của userId vừa đăng nhập (nếu EmergencyController đã đăng ký)
+      if (Get.isRegistered<EmergencyController>()) {
+        await Get.find<EmergencyController>().checkAndRestoreActiveSos(
+          targetUserId: loginResponse.id,
+        );
       }
 
       // Navigate to home page on successful login

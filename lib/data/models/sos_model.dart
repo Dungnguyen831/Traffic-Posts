@@ -35,7 +35,11 @@ class SosResponseDTO {
           ? DateTime.tryParse(json['timestamp'] as String)
           : null,
       status: json['status'] as String?,
-      userId: (json['userId'] as num?)?.toInt() ?? (json['user_id'] as num?)?.toInt(),
+      userId: (json['userId'] as num?)?.toInt() ??
+          (json['user_id'] as num?)?.toInt() ??
+          (json['idUser'] as num?)?.toInt() ??
+          int.tryParse(json['userId']?.toString() ?? '') ??
+          int.tryParse(json['user_id']?.toString() ?? ''),
       username: json['username'] as String?,
     );
   }

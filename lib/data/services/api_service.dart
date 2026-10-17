@@ -6,6 +6,9 @@ import '../../routes/app_pages.dart';
 import '../../services/storage_service.dart';
 import '../../modules/login/controllers/login_controller.dart';
 import '../../modules/profile/controllers/profile_controller.dart';
+import '../../modules/emergency/controllers/emergency_controller.dart';
+import '../../modules/map/controllers/map_controller.dart';
+import 'sos_stream_service.dart';
 import 'network_check_interceptor.dart';
 
 class ApiService {
@@ -102,6 +105,19 @@ class ApiService {
             _storageService.removeToken();
             _storageService.clearCredentials();
             _storageService.clearUserInfo();
+            if (Get.isRegistered<EmergencyController>()) {
+              Get.find<EmergencyController>().resetSosState();
+              Get.delete<EmergencyController>(force: true);
+            }
+            if (Get.isRegistered<SosStreamService>()) {
+              final sosStream = Get.find<SosStreamService>();
+              sosStream.disconnect();
+              sosStream.sosList.clear();
+              Get.delete<SosStreamService>(force: true);
+            }
+            if (Get.isRegistered<MapController>()) {
+              Get.delete<MapController>(force: true);
+            }
             if (Get.isRegistered<LoginController>()) {
               Get.delete<LoginController>(force: true);
             }

@@ -104,7 +104,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   void onInit() {
     super.onInit();
     _initMapPostsAndSocket();
-    _addDummyPolyline();
     _checkLocationPermission();
 
     // Lắng nghe danh sách SOS theo thời gian thực
@@ -226,87 +225,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   void onMapReady() {
     debugPrint('MapController: flutter_map engine is ready');
-  }
-
-  /// Danh sách bài viết mẫu đa dạng hashtag để kiểm tra hiển thị Marker trên bản đồ
-  List<TrafficPostModel> _getSampleTaggedPosts() {
-    return [
-      TrafficPostModel(
-        id: 'sample_ketxe',
-        userId: '101',
-        userName: 'Nguyễn Văn Nam',
-        content: 'Kẹt xe nghiêm trọng tại Ngã tư Cầu Giấy hướng về Kim Mã, các phương tiện di chuyển rất chậm.',
-        hashtags: ['ketxe'],
-        location: LocationModel(
-          lat: 21.033500,
-          lng: 105.800500,
-          address: 'Ngã tư Cầu Giấy, Hà Nội',
-        ),
-        likes: 15,
-        isLiked: false,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 8)),
-      ),
-      TrafficPostModel(
-        id: 'sample_tainan',
-        userId: '102',
-        userName: 'Trần Thị Mai',
-        content: 'Va chạm giao thông nhẹ tại nút giao Kim Mã - Liễu Giai, đường hơi ùn ứ một làn xe.',
-        hashtags: ['tainan'],
-        location: LocationModel(
-          lat: 21.031500,
-          lng: 105.813000,
-          address: 'Kim Mã - Liễu Giai, Ba Đình, Hà Nội',
-        ),
-        likes: 6,
-        isLiked: true,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 20)),
-      ),
-      TrafficPostModel(
-        id: 'sample_ngaplutnuoc',
-        userId: '103',
-        userName: 'Lê Hoàng Anh',
-        content: 'Đoạn đường ven sông Tô Lịch đang ngập nước khoảng 20-30cm sau mưa, các xe chú ý giảm tốc độ.',
-        hashtags: ['ngaplutnuoc'],
-        location: LocationModel(
-          lat: 21.025000,
-          lng: 105.802000,
-          address: 'Đường Láng, Cầu Giấy, Hà Nội',
-        ),
-        likes: 24,
-        isLiked: false,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 35)),
-      ),
-      TrafficPostModel(
-        id: 'sample_giaothong',
-        userId: '104',
-        userName: 'Đội CSGT Số 2',
-        content: 'Đang có lực lượng CSGT điều tiết phân luồng giờ cao điểm, các phương tiện đi lại ổn định.',
-        hashtags: ['giaothong'],
-        location: LocationModel(
-          lat: 21.029500,
-          lng: 105.810000,
-          address: 'Đường Kim Mã, Ba Đình, Hà Nội',
-        ),
-        likes: 42,
-        isLiked: false,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 50)),
-      ),
-      TrafficPostModel(
-        id: 'sample_sos',
-        userId: '105',
-        userName: 'Phạm Quốc Huy',
-        content: 'Xe máy bị thủng lốp cần hỗ trợ vá săm lưu động gần cây xăng Giảng Võ.',
-        hashtags: ['sos'],
-        location: LocationModel(
-          lat: 21.027000,
-          lng: 105.818000,
-          address: 'Giảng Võ, Đống Đa, Hà Nội',
-        ),
-        likes: 8,
-        isLiked: false,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
-      ),
-    ];
   }
 
   Future<void> fetchSuggestions(String input) async {
@@ -449,19 +367,10 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   /// Khởi tạo luồng nạp bài viết và kết nối STOMP an toàn không sót bài
   Future<void> _initMapPostsAndSocket() async {
-    // 1. Nạp bài viết mẫu hiển thị tức thì
-    for (final sample in _getSampleTaggedPosts()) {
-      if (sample.id != null) {
-        _postsById[sample.id!] = sample;
-      }
-    }
-    taggedPosts.value = _postsById.values.toList();
-    _buildPostMarkers();
-
-    // 2. Kết nối WebSocket trước để không bỏ lỡ bài viết nào ở giữa
+    // 1. Kết nối WebSocket trước để không bỏ lỡ bài viết nào ở giữa
     await _connectSocket();
 
-    // 3. Tải bài viết ban đầu qua REST API
+    // 2. Tải bài viết ban đầu qua REST API
     await loadTaggedPosts();
   }
 
@@ -549,28 +458,12 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       }
       _bufferedPosts.clear();
 
-      // Kết hợp bài viết mẫu nếu chưa có
-      for (final sample in _getSampleTaggedPosts()) {
-        if (sample.id != null && !_postsById.containsKey(sample.id)) {
-          _postsById[sample.id!] = sample;
-        }
-      }
-
       _initialLoadCompleted = true;
       taggedPosts.value = _postsById.values.toList();
       _buildPostMarkers();
     } catch (e) {
       debugPrint('MapController loadTaggedPosts error: $e');
       _initialLoadCompleted = true;
-      if (taggedPosts.isEmpty) {
-        for (final sample in _getSampleTaggedPosts()) {
-          if (sample.id != null) {
-            _postsById[sample.id!] = sample;
-          }
-        }
-        taggedPosts.value = _postsById.values.toList();
-        _buildPostMarkers();
-      }
     }
   }
 
@@ -766,9 +659,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     );
     _syncToTaggedPosts(postRx.value);
 
-    // Bỏ qua gọi API nếu là bài viết mẫu
-    if (p.id!.startsWith('sample_')) return;
-
     try {
       await _postRepository.likePost(p.id!);
     } catch (_) {
@@ -785,9 +675,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     postRx.value = p.copyWith(isFollowedByCurrentUser: !wasFollowing);
     _syncToTaggedPosts(postRx.value);
 
-    // Bỏ qua gọi API nếu là bài viết mẫu
-    if (p.id?.startsWith('sample_') ?? false) return;
-
     try {
       await _followRepository.followUser(userId);
     } catch (_) {
@@ -798,12 +685,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   void _reportPost(TrafficPostModel post) {
     if (post.id == null) return;
-
-    // Bỏ qua gọi API nếu là bài viết mẫu
-    if (post.id!.startsWith('sample_')) {
-      CustomAlert.showSuccess('Đã báo cáo bài viết');
-      return;
-    }
 
     _postRepository
         .reportPost(postId: post.id!, reason: 'Nội dung không phù hợp')
@@ -818,21 +699,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     if (updated.id != null) {
       _postsById[updated.id!] = updated;
     }
-  }
-
-  void _addDummyPolyline() {
-    polylines.add(
-      fm.Polyline(
-        points: const [
-          LatLng(21.028511, 105.804817),
-          LatLng(21.029511, 105.805817),
-          LatLng(21.030511, 105.806817),
-          LatLng(21.031511, 105.807817),
-        ],
-        color: Colors.blue,
-        strokeWidth: 5.0,
-      ),
-    );
   }
 
   void _buildSosMarkers() {

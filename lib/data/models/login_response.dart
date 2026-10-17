@@ -25,8 +25,13 @@ class LoginResponse {
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
     final score = json['reputationScore'] as int? ?? 100;
+    final rawId = json['id'] ?? json['userId'] ?? json['user_id'];
+    final parsedId = rawId is num
+        ? rawId.toInt()
+        : (rawId is String ? int.tryParse(rawId) : null);
+
     return LoginResponse(
-      id: json['id'] as int?,
+      id: parsedId,
       token: json['token'] as String?,
       username: json['username'] as String?,
       fullname: (json['fullname'] ?? json['fullName']) as String?,

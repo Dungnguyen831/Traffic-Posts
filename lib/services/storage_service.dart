@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -43,7 +45,7 @@ class StorageService extends GetxService {
     await _prefs.remove('password');
   }
 
-  // Active SOS session storage gắn liền với danh tính tài khoản
+  // Active SOS session storage gắn liền với danh tính từng tài khoản (userId)
   Future<void> saveActiveSos({
     required String sosId,
     required double lat,
@@ -53,47 +55,52 @@ class StorageService extends GetxService {
     String? phoneNumber,
     String? username,
   }) async {
-    await _prefs.setString('active_sos_id', sosId);
-    await _prefs.setDouble('active_sos_lat', lat);
-    await _prefs.setDouble('active_sos_lng', lng);
-    if (note != null) {
-      await _prefs.setString('active_sos_note', note);
-    }
-    if (userId != null) {
-      await _prefs.setInt('active_sos_user_id', userId);
-    }
-    if (phoneNumber != null && phoneNumber.isNotEmpty) {
-      await _prefs.setString('active_sos_user_phone', phoneNumber);
-    }
-    if (username != null && username.isNotEmpty) {
-      await _prefs.setString('active_sos_username', username);
-    }
+    final uid = userId ?? getUserId();
+    if (uid == null) return;
+
+    final data = {
+      'sosId': sosId,
+      'lat': lat,
+      'lng': lng,
+      'note': note ?? '',
+      'userId': uid,
+      'userPhone': phoneNumber,
+      'username': username,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    await _prefs.setString('active_sos_user_$uid', jsonEncode(data));
+
+    // Dọn dẹp cờ toàn cục cũ (nếu có) để tránh rò rỉ trên thiết bị
+    await _clearLegacyGlobalSos();
   }
 
-  Map<String, dynamic>? getActiveSos() {
-    final sosId = _prefs.getString('active_sos_id');
-    final lat = _prefs.getDouble('active_sos_lat');
-    final lng = _prefs.getDouble('active_sos_lng');
-    final note = _prefs.getString('active_sos_note');
-    final userId = _prefs.getInt('active_sos_user_id');
-    final userPhone = _prefs.getString('active_sos_user_phone');
-    final username = _prefs.getString('active_sos_username');
+  Map<String, dynamic>? getActiveSos({int? userId}) {
+    final uid = userId ?? getUserId();
+    if (uid == null) return null;
 
-    if (sosId != null && lat != null && lng != null) {
-      return {
-        'sosId': sosId,
-        'lat': lat,
-        'lng': lng,
-        'note': note ?? '',
-        'userId': userId,
-        'userPhone': userPhone,
-        'username': username,
-      };
+    final raw = _prefs.getString('active_sos_user_$uid');
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final Map<String, dynamic> data = jsonDecode(raw);
+        if (data['sosId'] != null && data['lat'] != null && data['lng'] != null) {
+          return data;
+        }
+      } catch (e) {
+        debugPrint('Error parsing active SOS for user $uid: $e');
+      }
     }
     return null;
   }
 
-  Future<void> clearActiveSos() async {
+  Future<void> clearActiveSos({int? userId}) async {
+    final uid = userId ?? getUserId();
+    if (uid != null) {
+      await _prefs.remove('active_sos_user_$uid');
+    }
+    await _clearLegacyGlobalSos();
+  }
+
+  Future<void> _clearLegacyGlobalSos() async {
     await _prefs.remove('active_sos_id');
     await _prefs.remove('active_sos_lat');
     await _prefs.remove('active_sos_lng');
