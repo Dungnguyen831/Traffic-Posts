@@ -25,6 +25,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Create .env file
+        run: |
+          echo "${{ secrets.ENV_FILE }}" > .env
+
       - name: Build iOS App without codesign
         run: flutter build ios --release --no-codesign
 
