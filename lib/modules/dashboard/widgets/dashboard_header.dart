@@ -8,8 +8,10 @@ import 'package:traffic_app/widgets/loading_widget.dart';
 
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:flutter/services.dart';
 import '../../../routes/app_pages.dart';
 import '../../../theme/app_theme.dart';
+import '../controllers/dashboard_controller.dart';
 import '../../emergency/controllers/emergency_controller.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../profile/controllers/profile_controller.dart';
@@ -25,36 +27,32 @@ class DashboardHeader extends StatelessWidget {
 
     return Row(
       children: [
-        // Logo ứng dụng kèm tên Traffic Posts phía trên cùng bên trái
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 34.w,
-              height: 34.w,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8.r),
-                child: Image.asset(
-                  'assets/icons/app_icon_big.png',
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-            SizedBox(width: 8.w),
-            RichText(
+        // Tên ứng dụng Traffic Posts phía trên cùng bên trái (Bấm để tải lại danh sách bài viết)
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            if (Get.isRegistered<DashboardController>()) {
+              final dashController = Get.find<DashboardController>();
+              if (dashController.isLoading.value) return;
+              dashController.scrollToTop();
+              if (dashController.posts.isEmpty) {
+                dashController.refresh();
+              } else {
+                try {
+                  dashController.refreshController.requestRefresh();
+                } catch (_) {
+                  dashController.refresh();
+                }
+              }
+            }
+          },
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 6.h),
+            child: RichText(
               text: TextSpan(
                 style: GoogleFonts.quicksand(
-                  fontSize: 18.sp,
+                  fontSize: 20.sp,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.3,
                 ),
@@ -70,7 +68,7 @@ class DashboardHeader extends StatelessWidget {
                 ],
               ),
             ),
-          ],
+          ),
         ),
         const Spacer(),
         // Nút Bảng xếp hạng uy tín
