@@ -48,7 +48,7 @@ class EmergencyController extends GetxController {
 
       if (relativePhone.isEmpty) {
         CustomAlert.showWarning('emergency_notification_mesg_1'.tr);
-        await _makePhoneCall(''); 
+        return;
       } else {
         await _makePhoneCall(relativePhone);
       }
@@ -215,7 +215,9 @@ class EmergencyController extends GetxController {
       
       // 1. Lấy tọa độ GPS chính xác
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
 
       // 2. Lấy thông tin tài khoản hiện tại từ Storage
@@ -304,10 +306,6 @@ class EmergencyController extends GetxController {
       isLoading.value = false;
     }
   }
-
-  // Tương thích ngược nếu còn lời gọi cũ
-  Future<void> cancelActiveSos() => closeActiveSos();
-  Future<void> resolveActiveSos() => closeActiveSos();
 
   @override
   void onClose() {

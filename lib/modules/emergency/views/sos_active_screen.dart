@@ -119,8 +119,13 @@ class _SosRadarMarkerWidgetState extends State<SosRadarMarkerWidget>
 /// 2. Widget Dialog/Banner ghim trên đỉnh màn hình (Hiển thị dạng trong suốt Liquid Glass với icon dấu X đỏ đơn giản)
 class SosTopBannerWidget extends StatefulWidget {
   final VoidCallback? onTap;
+  final bool isActive;
 
-  const SosTopBannerWidget({super.key, this.onTap});
+  const SosTopBannerWidget({
+    super.key,
+    this.onTap,
+    this.isActive = true,
+  });
 
   @override
   State<SosTopBannerWidget> createState() => _SosTopBannerWidgetState();
@@ -136,7 +141,22 @@ class _SosTopBannerWidgetState extends State<SosTopBannerWidget>
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
-    )..repeat(reverse: true);
+    );
+    if (widget.isActive) {
+      _pulseController.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant SosTopBannerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive != oldWidget.isActive) {
+      if (widget.isActive) {
+        _pulseController.repeat(reverse: true);
+      } else {
+        _pulseController.stop();
+      }
+    }
   }
 
   @override
@@ -575,22 +595,6 @@ class _SosActiveBottomViewState extends State<SosActiveBottomView>
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 4. Màn hình SOS Active (Giữ lại để tương thích ngược nếu cần)
-class SosActiveScreen extends StatelessWidget {
-  const SosActiveScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SosActiveBottomView(),
         ),
       ),
     );
