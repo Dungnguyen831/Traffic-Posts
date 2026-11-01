@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:traffic_app/widgets/custom_alert.dart';
@@ -12,12 +10,15 @@ import '../../../data/models/profile_request.dart';
 import '../../../data/repositories/user_repository.dart';
 import '../../../data/services/api_service.dart';
 import '../../../routes/app_pages.dart';
+import '../../../services/assets_service.dart';
+import '../../../services/image_picker_service.dart';
 import '../../../services/storage_service.dart';
 import '../../emergency/controllers/emergency_controller.dart';
 import '../../../data/services/sos_stream_service.dart';
 import '../../login/controllers/login_controller.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../map/controllers/map_controller.dart';
+import 'user_profile_controller.dart';
 
 class ProfileController extends GetxController {
   final UserRepository _userRepository = UserRepository();
@@ -25,7 +26,6 @@ class ProfileController extends GetxController {
   final nameController = TextEditingController();
   final emailController = TextEditingController();
   final phoneController = TextEditingController();
-  final addressController = TextEditingController();
   final relativePhoneController = TextEditingController();
 
   var isLoading = false.obs;
@@ -37,7 +37,7 @@ class ProfileController extends GetxController {
   var provinces = <Map<String, dynamic>>[].obs;
   var selectedProvince = Rxn<Map<String, dynamic>>();
 
-  final ImagePicker _picker = ImagePicker();
+  ImagePicker get _picker => ImagePickerService.to.picker;
 
   // Flag để kiểm tra dữ liệu đã được load chưa
   var isDataLoaded = false.obs;
@@ -51,26 +51,19 @@ class ProfileController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    // Load provinces và profile song song, không block UI
     _initData();
   }
 
   Future<void> _initData() async {
-    // Load cả 2 song song để tối ưu thời gian
-    await Future.wait([loadProvinces(), loadUserProfile()]);
+    await loadProvinces();
+    await loadUserProfile();
   }
 
   Future<void> loadProvinces() async {
     if (isProvincesLoaded.value) return;
 
     try {
-      final String response = await rootBundle.loadString(
-        'assets/json/provinces.json',
-      );
-      final List<dynamic> data = json.decode(response);
-      final List<Map<String, dynamic>> mappedData = data
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+      final mappedData = await AssetsService.to.getProvinces();
       provinces.assignAll(mappedData);
       isProvincesLoaded.value = true;
     } catch (e) {
@@ -83,7 +76,6 @@ class ProfileController extends GetxController {
     nameController.dispose();
     emailController.dispose();
     phoneController.dispose();
-    addressController.dispose();
     relativePhoneController.dispose();
     super.onClose();
   }
@@ -104,7 +96,6 @@ class ProfileController extends GetxController {
       nameController.text = user.fullname ?? "";
       emailController.text = user.email ?? "";
       phoneController.text = user.phoneNumber ?? "";
-      addressController.text = user.province ?? "";
       relativePhoneController.text = user.relativePhone ?? "";
 
       final score = user.reputationScore ?? 100;
@@ -129,7 +120,6 @@ class ProfileController extends GetxController {
 
       // Set selected province
       if (user.province != null && user.province!.isNotEmpty) {
-        // Wait for provinces to load if empty
         if (!isProvincesLoaded.value) {
           await loadProvinces();
         }
@@ -273,6 +263,7 @@ class ProfileController extends GetxController {
         await storage.removeToken();
         await storage.clearCredentials();
         await storage.clearUserInfo();
+        UserProfileController.clearCache();
         // Không xóa active SOS ở đây để bảo lưu trạng thái SOS của user này trong local storage
         ApiService().clearToken();
 

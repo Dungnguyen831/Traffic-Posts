@@ -65,7 +65,6 @@ class UserProfileScreen extends StatelessWidget {
                           cancelText: 'profile_cancel'.tr,
                           onConfirm: () {
                             controller.toggleUserFollow();
-                            Get.back();
                           },
                         );
                       } else {
@@ -123,165 +122,168 @@ class UserProfileScreen extends StatelessWidget {
       ),
 
       // ✅ SMART REFRESHER SỬ DỤNG CUSTOM FOOTER CỦA DASHBOARD
-      body: SmartRefresher(
-        controller: controller.refreshController,
-        scrollController: controller.scrollController,
-        enablePullDown: true,
-        enablePullUp: controller.posts.isNotEmpty,
-        header: const WaterDropHeader(),
-        footer: CustomFooter(
-          builder: (context, mode) {
-            Widget body;
-            if (mode == LoadStatus.idle) {
-              body = Text(
-                'dashboard_pull_up_load'.tr,
-                style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
-              );
-            } else if (mode == LoadStatus.loading) {
-              body = Center(child: LoadingWidget());
-            } else if (mode == LoadStatus.failed) {
-              body = Text(
-                'dashboard_load_failed'.tr,
-                style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
-              );
-            } else if (mode == LoadStatus.canLoading) {
-              body = Text(
-                'dashboard_release_to_load'.tr,
-                style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
-              );
-            } else {
-              final closeComp = AssetsService.to.closeComposition.value;
-              body = SizedBox(
-                height: 120.h,
-                width: 120.h,
-                child: closeComp != null
-                    ? Lottie(
-                        composition: closeComp,
-                        fit: BoxFit.contain,
-                        repeat: true,
-                        renderCache: RenderCache.drawingCommands,
-                      )
-                    : Lottie.asset(
-                        'assets/animations/Close.json',
-                        fit: BoxFit.contain,
-                        repeat: true,
-                        renderCache: RenderCache.drawingCommands,
-                      ),
-              );
-            }
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 100.0),
-              child: SizedBox(
-                height: 140.h,
-                child: Center(child: body),
-              ),
-            );
-          },
-        ),
-        onRefresh: controller.refresh,
-        onLoading: controller.loadMore,
-
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Obx(() {
-                final user = controller.userInfo.value;
-                final displayAvatarUrl =
-                    user?.fullAvatarUrl ?? initialAvatarUrl;
-                final displayUserName =
-                    user?.fullname ?? initialUserName ?? 'profile_loading'.tr;
-
-                return Column(
-                  children: [
-                    SizedBox(height: 20.h),
-                    Hero(
-                      tag:
-                          heroTag ??
-                          'avatar_default_${controller.targetUserId}',
-                      child: ClipOval(
-                        child: displayAvatarUrl != null
-                            ? CachedNetworkImage(
-                                imageUrl: displayAvatarUrl,
-                                width: 90.w,
-                                height: 90.w,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) =>
-                                    CircularProgressIndicator(
-                                      color: AppTheme.primaryColor,
-                                    ),
-                                errorWidget: (context, url, error) => Icon(
-                                  IconlyBroken.profile,
-                                  size: 50.sp,
-                                  color: Colors.grey,
-                                ),
-                              )
-                            : Container(
-                                width: 90.w,
-                                height: 90.w,
-                                color: Colors.grey[200],
-                                child: Icon(
-                                  IconlyBroken.profile,
-                                  size: 50.sp,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                      ),
-                    ),
-                    SizedBox(height: 12.h),
-                    Text(
-                      displayUserName,
-                      style: TextStyle(
-                        fontSize: 18.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textColor,
-                      ),
-                    ),
-                    if (user != null) ...[
-                      SizedBox(height: 8.h),
-                      ReputationBadgeWidget(
-                        badge: user.badge ?? 'Người dẫn đường',
-                        score: user.reputationScore ?? 100,
-                        isCompact: true,
-                        showScore: true,
-                      ),
-                    ],
-                    SizedBox(height: 20.h),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildStatItem(
-                          '${user?.followingsCount ?? 0}',
-                          'profile_stat_following'.tr,
-                          onTap: controller.isMyProfile
-                              ? () => controller.openFollowManagement(initialIndex: 1)
-                              : null,
+      body: Obx(
+        () => SmartRefresher(
+          controller: controller.refreshController,
+          scrollController: controller.scrollController,
+          enablePullDown: true,
+          enablePullUp: controller.posts.isNotEmpty,
+          header: const WaterDropHeader(),
+          footer: CustomFooter(
+            builder: (context, mode) {
+              Widget body;
+              if (mode == LoadStatus.idle) {
+                body = Text(
+                  'dashboard_pull_up_load'.tr,
+                  style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
+                );
+              } else if (mode == LoadStatus.loading) {
+                body = Center(child: LoadingWidget());
+              } else if (mode == LoadStatus.failed) {
+                body = Text(
+                  'dashboard_load_failed'.tr,
+                  style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
+                );
+              } else if (mode == LoadStatus.canLoading) {
+                body = Text(
+                  'dashboard_release_to_load'.tr,
+                  style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
+                );
+              } else {
+                final closeComp = AssetsService.to.closeComposition.value;
+                body = SizedBox(
+                  height: 120.h,
+                  width: 120.h,
+                  child: closeComp != null
+                      ? Lottie(
+                          composition: closeComp,
+                          fit: BoxFit.contain,
+                          repeat: true,
+                          renderCache: RenderCache.drawingCommands,
+                        )
+                      : Lottie.asset(
+                          'assets/animations/Close.json',
+                          fit: BoxFit.contain,
+                          repeat: true,
+                          renderCache: RenderCache.drawingCommands,
                         ),
-                        _buildStatItem(
-                          '${user?.followersCount ?? 0}',
-                          'profile_stat_followers'.tr,
-                          onTap: controller.isMyProfile
-                              ? () => controller.openFollowManagement(initialIndex: 0)
-                              : null,
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 100.0),
+                child: SizedBox(
+                  height: 140.h,
+                  child: Center(child: body),
+                ),
+              );
+            },
+          ),
+          onRefresh: controller.refresh,
+          onLoading: controller.loadMore,
+
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Obx(() {
+                  final user = controller.userInfo.value;
+                  final displayAvatarUrl =
+                      user?.fullAvatarUrl ?? initialAvatarUrl;
+                  final displayUserName =
+                      user?.fullname ?? initialUserName ?? 'profile_loading'.tr;
+
+                  return Column(
+                    children: [
+                      SizedBox(height: 20.h),
+                      Hero(
+                        tag:
+                            heroTag ??
+                            'avatar_default_${controller.targetUserId}',
+                        child: ClipOval(
+                          child: displayAvatarUrl != null
+                              ? CachedNetworkImage(
+                                  imageUrl: displayAvatarUrl,
+                                  width: 90.w,
+                                  height: 90.w,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) =>
+                                      const CircularProgressIndicator(
+                                        color: AppTheme.primaryColor,
+                                      ),
+                                  errorWidget: (context, url, error) => Icon(
+                                    IconlyBroken.profile,
+                                    size: 50.sp,
+                                    color: Colors.grey,
+                                  ),
+                                )
+                              : Container(
+                                  width: 90.w,
+                                  height: 90.w,
+                                  color: Colors.grey[200],
+                                  child: Icon(
+                                    IconlyBroken.profile,
+                                    size: 50.sp,
+                                    color: Colors.grey,
+                                  ),
+                                ),
                         ),
-                        _buildStatItem(
-                          '${controller.totalLikes.value}',
-                          'profile_stat_likes'.tr,
+                      ),
+                      SizedBox(height: 12.h),
+                      Text(
+                        displayUserName,
+                        style: TextStyle(
+                          fontSize: 18.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textColor,
+                        ),
+                      ),
+                      if (user != null) ...[
+                        SizedBox(height: 8.h),
+                        ReputationBadgeWidget(
+                          badge: user.badge ?? 'Người dẫn đường',
+                          score: user.reputationScore ?? 100,
+                          isCompact: true,
+                          showScore: true,
                         ),
                       ],
-                    ),
-                    SizedBox(height: 24.h),
-                  ],
-                );
-              }),
-            ),
+                      SizedBox(height: 20.h),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildStatItem(
+                            '${user?.followingsCount ?? 0}',
+                            'profile_stat_following'.tr,
+                            onTap: controller.isMyProfile
+                                ? () => controller.openFollowManagement(
+                                    initialIndex: 1,
+                                  )
+                                : null,
+                          ),
+                          _buildStatItem(
+                            '${user?.followersCount ?? 0}',
+                            'profile_stat_followers'.tr,
+                            onTap: controller.isMyProfile
+                                ? () => controller.openFollowManagement(
+                                    initialIndex: 0,
+                                  )
+                                : null,
+                          ),
+                          _buildStatItem(
+                            '${controller.totalLikes.value}',
+                            'profile_stat_likes'.tr,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                    ],
+                  );
+                }),
+              ),
 
-            // ==========================================
-            // PHẦN DANH SÁCH BÀI VIẾT TÍCH HỢP SHIMMER VÀ LOTTIE
-            // ==========================================
-            Obx(() {
-              // 1. TRẠNG THÁI LOADING: Dùng SliverList + PostItemShimmer
-              if (controller.isLoading.value && controller.posts.isEmpty) {
-                return SliverPadding(
+              // ==========================================
+              // PHẦN DANH SÁCH BÀI VIẾT TÍCH HỢP SHIMMER VÀ LOTTIE
+              // ==========================================
+              if (controller.isLoading.value && controller.posts.isEmpty)
+                SliverPadding(
                   padding: EdgeInsets.symmetric(horizontal: 24.w),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
@@ -292,12 +294,9 @@ class UserProfileScreen extends StatelessWidget {
                       childCount: 3, // Hiện 3 bộ xương (skeleton)
                     ),
                   ),
-                );
-              }
-
-              // 2. TRẠNG THÁI TRỐNG: Dùng Lottie + SliverToBoxAdapter
-              if (controller.posts.isEmpty) {
-                return SliverToBoxAdapter(
+                )
+              else if (controller.posts.isEmpty)
+                SliverToBoxAdapter(
                   child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -333,23 +332,20 @@ class UserProfileScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                );
-              }
+                )
+              else
+                SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: 24.w),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      addRepaintBoundaries: false,
+                      (context, index) {
+                        final post = controller.posts[index];
+                        final postId = post.id ?? '';
+                        final userId = post.userId ?? '';
 
-              // 3. TRẠNG THÁI CÓ DỮ LIỆU: Render danh sách thật
-              return SliverPadding(
-                padding: EdgeInsets.symmetric(horizontal: 24.w),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    addRepaintBoundaries: false,
-                    (context, index) {
-                      final post = controller.posts[index];
-                      final postId = post.id ?? '';
-                      final userId = post.userId ?? '';
-
-                      return _PostKeepAlive(
-                        key: ValueKey('keep_$postId'),
-                        child: Padding(
+                        return Padding(
+                          key: ValueKey('pad_$postId'),
                           padding: EdgeInsets.only(bottom: 20.h),
                           child: RepaintBoundary(
                             key: ValueKey(postId),
@@ -366,15 +362,14 @@ class UserProfileScreen extends StatelessWidget {
                               enableHeroAvatar: false,
                             ),
                           ),
-                        ),
-                      );
-                    },
-                    childCount: controller.posts.length,
+                        );
+                      },
+                      childCount: controller.posts.length,
+                    ),
                   ),
                 ),
-              );
-            }),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -418,26 +413,5 @@ class UserProfileScreen extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _PostKeepAlive extends StatefulWidget {
-  final Widget child;
-
-  const _PostKeepAlive({super.key, required this.child});
-
-  @override
-  State<_PostKeepAlive> createState() => _PostKeepAliveState();
-}
-
-class _PostKeepAliveState extends State<_PostKeepAlive>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    return widget.child;
   }
 }

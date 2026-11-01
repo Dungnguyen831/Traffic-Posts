@@ -90,7 +90,9 @@ class RankingController extends GetxController {
       }
       rankingList.addAll(list);
     } catch (e) {
-      hasMore.value = false;
+      if (_currentPage > 0) {
+        _currentPage--;
+      }
     } finally {
       isLoadMore.value = false;
     }

@@ -11,12 +11,15 @@ import '../../../data/repositories/user_repository.dart';
 import '../../../services/storage_service.dart';
 import '../../dashboard/controllers/dashboard_controller.dart';
 import '../../dashboard/widgets/report_bottom_sheet.dart';
+import '../../map/controllers/map_controller.dart';
 import '../../../routes/app_pages.dart';
 import 'profile_controller.dart';
 
 class UserProfileController extends GetxController {
   // profile cache
   static final Map<String, Map<String, dynamic>> _profileCache = {};
+
+  static void clearCache() => _profileCache.clear();
 
   final _likedStates = <String, RxBool>{};
   final _likeCounts = <String, RxInt>{};
@@ -260,10 +263,18 @@ class UserProfileController extends GetxController {
     // Optimistic Update cho Header
     isFollowing.value = !isFollowing.value;
 
-    // Đồng bộ ngay sang DashboardController nếu đang tồn tại
+    // Đồng bộ ngay sang DashboardController & MapController nếu đang tồn tại
     if (Get.isRegistered<DashboardController>()) {
-      Get.find<DashboardController>().followedState(targetUserId).value =
-          isFollowing.value;
+      Get.find<DashboardController>().syncFollowFromExternal(
+        targetUserId,
+        isFollowing.value,
+      );
+    }
+    if (Get.isRegistered<MapController>()) {
+      Get.find<MapController>().syncUserFollowState(
+        targetUserId,
+        isFollowing.value,
+      );
     }
 
     if (userInfo.value != null) {
@@ -287,8 +298,16 @@ class UserProfileController extends GetxController {
       // Rollback cả 2 nơi
       isFollowing.value = !isFollowing.value;
       if (Get.isRegistered<DashboardController>()) {
-        Get.find<DashboardController>().followedState(targetUserId).value =
-            isFollowing.value;
+        Get.find<DashboardController>().syncFollowFromExternal(
+          targetUserId,
+          isFollowing.value,
+        );
+      }
+      if (Get.isRegistered<MapController>()) {
+        Get.find<MapController>().syncUserFollowState(
+          targetUserId,
+          isFollowing.value,
+        );
       }
       CustomAlert.showError('Không thể thực hiện. Vui lòng thử lại!');
     }
@@ -319,8 +338,8 @@ class UserProfileController extends GetxController {
     likedState(postId).value = !isLiked;
     likeCount(postId).value = isLiked ? currentCount - 1 : currentCount + 1;
     _calculateTotalLikes();
-    // Sync về DashboardController để khi quay lại dashboard state nhất quán
-    _syncLikeToDashboard(
+    // Sync về DashboardController & MapController để khi quay lại state nhất quán
+    _syncLikeToExternal(
       postId,
       !isLiked,
       isLiked ? currentCount - 1 : currentCount + 1,
@@ -334,15 +353,19 @@ class UserProfileController extends GetxController {
       likedState(postId).value = isLiked;
       likeCount(postId).value = currentCount;
       _calculateTotalLikes();
-      _syncLikeToDashboard(postId, isLiked, currentCount);
+      _syncLikeToExternal(postId, isLiked, currentCount);
     }
   }
 
-  void _syncLikeToDashboard(String postId, bool isLiked, int count) {
-    if (!Get.isRegistered<DashboardController>()) return;
-    final dash = Get.find<DashboardController>();
-    dash.likedState(postId).value = isLiked;
-    dash.likeCount(postId).value = count;
+  void _syncLikeToExternal(String postId, bool isLiked, int count) {
+    if (Get.isRegistered<DashboardController>()) {
+      final dash = Get.find<DashboardController>();
+      dash.likedState(postId).value = isLiked;
+      dash.likeCount(postId).value = count;
+    }
+    if (Get.isRegistered<MapController>()) {
+      Get.find<MapController>().syncPostLikeState(postId, isLiked, count);
+    }
   }
 
   /// Report post

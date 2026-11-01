@@ -1,12 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../../data/models/signup_request.dart';
 import '../../../data/repositories/auth_repository.dart';
 import '../../../routes/app_pages.dart';
+import '../../../services/assets_service.dart';
 import '../../../widgets/custom_dialog.dart';
 
 class SignupController extends GetxController {
@@ -25,11 +23,8 @@ class SignupController extends GetxController {
   final confirmPasswordController = TextEditingController();
 
   final usernameFocusNode = FocusNode();
-  final emailFocusNode = FocusNode();
   final nameFocusNode = FocusNode();
   final passwordFocusNode = FocusNode();
-  final phoneFocusNode = FocusNode();
-  // final addressFocusNode = FocusNode();
   final confirmPasswordFocusNode = FocusNode();
 
   @override
@@ -41,18 +36,16 @@ class SignupController extends GetxController {
   @override
   void onClose() {
     usernameFocusNode.unfocus();
-    emailFocusNode.unfocus();
     nameFocusNode.unfocus();
     passwordFocusNode.unfocus();
-    phoneFocusNode.unfocus();
     confirmPasswordFocusNode.unfocus();
     // Do not call dispose() here so the controller remains valid if reused across route transitions
     super.onClose();
   }
 
   Future<void> signup() async {
-    if (usernameController.text.isEmpty ||
-        fullNameController.text.isEmpty ||
+    if (usernameController.text.trim().isEmpty ||
+        fullNameController.text.trim().isEmpty ||
         passwordController.text.isEmpty ||
         selectedProvince.value == null) {
       CustomDialog.show(
@@ -75,8 +68,8 @@ class SignupController extends GetxController {
     try {
       isLoading.value = true;
       final request = SignupRequest(
-        userName: usernameController.text,
-        fullname: fullNameController.text,
+        userName: usernameController.text.trim(),
+        fullname: fullNameController.text.trim(),
         password: passwordController.text,
         province: selectedProvince.value!['name'],
       );
@@ -102,13 +95,7 @@ class SignupController extends GetxController {
 
   Future<void> loadProvinces() async {
     try {
-      final String response = await rootBundle.loadString(
-        'assets/json/provinces.json',
-      );
-      final List<dynamic> data = json.decode(response);
-      final List<Map<String, dynamic>> mappedData = data
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+      final mappedData = await AssetsService.to.getProvinces();
       provinces.assignAll(mappedData);
     } catch (e) {
       debugPrint('Error loading provinces: $e');

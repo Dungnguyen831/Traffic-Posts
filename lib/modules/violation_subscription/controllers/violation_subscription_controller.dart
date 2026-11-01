@@ -281,13 +281,11 @@ class ViolationSubscriptionController extends GetxController {
         buttonText: 'violation_sub_replace_action'.tr,
         cancelText: 'violation_sub_cancel'.tr,
         onPressed: () {
-          Get.back();
           changeSubscriptionPlate(
             newPlate: newPlate,
             receiveNotifications: receiveNotifications,
           );
         },
-        onCancel: () => Get.back(),
       ),
     );
   }
@@ -381,7 +379,7 @@ class ViolationSubscriptionController extends GetxController {
                     ),
                     Switch.adaptive(
                       value: editNotify.value,
-                      activeColor: AppTheme.primaryColor,
+                      activeTrackColor: AppTheme.primaryColor,
                       onChanged: (val) => editNotify.value = val,
                     ),
                   ],
@@ -394,7 +392,7 @@ class ViolationSubscriptionController extends GetxController {
                     child: OutlinedButton(
                       onPressed: () => Get.back(),
                       style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: AppTheme.dividerColor),
+                        side: const BorderSide(color: AppTheme.dividerColor),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12.r),
                         ),
@@ -453,7 +451,9 @@ class ViolationSubscriptionController extends GetxController {
           ),
         ),
       ),
-    );
+    ).whenComplete(() {
+      editController.dispose();
+    });
   }
 
   /// Bật/tắt trạng thái nhận thông báo cho biển số xe
@@ -511,10 +511,8 @@ class ViolationSubscriptionController extends GetxController {
         buttonText: 'violation_sub_delete_action'.tr,
         cancelText: 'violation_sub_cancel'.tr,
         onPressed: () {
-          Get.back();
           _executeDeleteSubscription(item.licensePlate);
         },
-        onCancel: () => Get.back(),
       ),
     );
   }
@@ -566,10 +564,8 @@ class ViolationSubscriptionController extends GetxController {
         buttonText: 'violation_sub_delete_all_action'.tr,
         cancelText: 'violation_sub_cancel'.tr,
         onPressed: () {
-          Get.back();
           _executeDeleteAllSubscriptions();
         },
-        onCancel: () => Get.back(),
       ),
     );
   }

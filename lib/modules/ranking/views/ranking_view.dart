@@ -103,14 +103,17 @@ class RankingView extends GetView<RankingController> {
                     rank: itemIndex + 1,
                     user: user,
                   ),
-                  if (isLastItem && controller.isLoadMore.value) ...[
-                    Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16.h),
-                      child: Center(
-                        child: LoadingWidget(height: 24.h),
-                      ),
+                  if (isLastItem)
+                    Obx(
+                      () => controller.isLoadMore.value
+                          ? Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16.h),
+                              child: Center(
+                                child: LoadingWidget(height: 24.h),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
                     ),
-                  ],
                 ],
               );
             },
