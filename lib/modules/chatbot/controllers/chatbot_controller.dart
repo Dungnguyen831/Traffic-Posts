@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
@@ -117,6 +119,8 @@ Tôi không thể truy cập dữ liệu vi phạm theo biển số hoặc camer
 
   late GoogleAIClient _client;
   bool _hasApiKey = false;
+  StreamSubscription<GenerateContentResponse>? _streamSubscription;
+  DateTime? _lastScrollTime;
 
   final suggestions = const [
     'chatbot_suggestion_1',
@@ -183,7 +187,7 @@ Tôi không thể truy cập dữ liệu vi phạm theo biển số hoặc camer
       ),
     );
     textController.clear();
-    _scrollToBottom();
+    _scrollToBottom(force: true);
 
     isTyping.value = true;
     streamingText.value = '';
@@ -198,10 +202,11 @@ Tôi không thể truy cập dữ liệu vi phạm theo biển số hoặc camer
         )
         .toList();
 
-    try {
-      String fullText = '';
+    final completer = Completer<void>();
+    String fullText = '';
 
-      await for (final chunk in _client.models.streamGenerateContent(
+    try {
+      final stream = _client.models.streamGenerateContent(
         model: _modelId,
         request: GenerateContentRequest(
           systemInstruction: Content(
@@ -213,24 +218,37 @@ Tôi không thể truy cập dữ liệu vi phạm theo biển số hoặc camer
             ],
           ),
           contents: conversationContents,
-
-          // Cho phép Gemini tra cứu web để kiểm tra quy định mới.
           tools: [Tool(googleSearch: {})],
-
           generationConfig: const GenerationConfig(
             temperature: 0.1,
             maxOutputTokens: 800,
           ),
         ),
-      )) {
-        final chunkText = chunk.text;
+      );
 
-        if (chunkText != null && chunkText.isNotEmpty) {
-          fullText += chunkText;
-          streamingText.value = fullText;
-          _scrollToBottom();
-        }
-      }
+      _streamSubscription = stream.listen(
+        (chunk) {
+          final chunkText = chunk.text;
+          if (chunkText != null && chunkText.isNotEmpty) {
+            fullText += chunkText;
+            streamingText.value = fullText;
+            _scrollToBottom();
+          }
+        },
+        onError: (Object error, StackTrace st) {
+          if (!completer.isCompleted) {
+            completer.completeError(error, st);
+          }
+        },
+        onDone: () {
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        },
+        cancelOnError: true,
+      );
+
+      await completer.future;
 
       if (fullText.isNotEmpty) {
         messages.add(
@@ -271,24 +289,37 @@ Tôi không thể truy cập dữ liệu vi phạm theo biển số hoặc camer
         ),
       );
     } finally {
+      _streamSubscription = null;
       streamingText.value = '';
       isTyping.value = false;
-      _scrollToBottom();
+      _scrollToBottom(force: true);
     }
   }
 
   void clearChat() {
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
+    streamingText.value = '';
+    isTyping.value = false;
     messages.clear();
     textController.clear();
     _addWelcomeMessage();
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool force = false}) {
+    final now = DateTime.now();
+    if (!force &&
+        _lastScrollTime != null &&
+        now.difference(_lastScrollTime!).inMilliseconds < 120) {
+      return;
+    }
+    _lastScrollTime = now;
+
     Future.delayed(const Duration(milliseconds: 80), () {
       if (scrollController.hasClients) {
         scrollController.animateTo(
           scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
         );
       }
@@ -297,6 +328,8 @@ Tôi không thể truy cập dữ liệu vi phạm theo biển số hoặc camer
 
   @override
   void onClose() {
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
     textController.dispose();
     scrollController.dispose();
     focusNode.dispose();
