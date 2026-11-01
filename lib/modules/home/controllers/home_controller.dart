@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart' hide ServiceStatus;
+import 'package:traffic_app/modules/camera/controllers/camera_controller.dart';
 import 'package:traffic_app/modules/dashboard/controllers/dashboard_controller.dart';
 import 'package:traffic_app/modules/map/controllers/map_controller.dart';
 import 'package:traffic_app/routes/app_pages.dart';
@@ -11,12 +12,13 @@ import 'package:traffic_app/routes/app_pages.dart';
 class HomeController extends GetxController with WidgetsBindingObserver {
   // Bottom Navigation State
   var currentIndex = 0.obs;
-  // final bool _mapTabVisited = false;
+  final visitedTabs = <int>{0, 1}.obs;
 
   // Upload Progress State
   var isUploading = false.obs;
   var uploadProgress = 0.0.obs;
   var uploadLabel = 'Đăng bài viết'.obs;
+  VoidCallback? _onCancelUpload;
 
   // Location Permission / Service State
   var isLocationServiceDisabled = false.obs;
@@ -44,6 +46,11 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       // Re-check when user returns from Settings after granting permission
       checkLocationStatus();
+      if (currentIndex.value == 2 &&
+          visitedTabs.contains(2) &&
+          Get.isRegistered<CameraController>()) {
+        Get.find<CameraController>().refreshLocationAndTime();
+      }
     }
   }
 
@@ -57,6 +64,11 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         // Re-check permission when GPS is re-enabled
         locationBannerDismissed.value = false;
         checkLocationStatus();
+        if (currentIndex.value == 2 &&
+            visitedTabs.contains(2) &&
+            Get.isRegistered<CameraController>()) {
+          Get.find<CameraController>().refreshLocationAndTime();
+        }
       }
     });
   }
@@ -99,6 +111,11 @@ class HomeController extends GetxController with WidgetsBindingObserver {
           result == LocationPermission.whileInUse) {
         isLocationPermissionDenied.value = false;
         locationBannerDismissed.value = false;
+        if (currentIndex.value == 2 &&
+            visitedTabs.contains(2) &&
+            Get.isRegistered<CameraController>()) {
+          Get.find<CameraController>().refreshLocationAndTime();
+        }
       }
     } catch (e) {
       debugPrint('HomeController requestLocationPermission error: $e');
@@ -116,15 +133,15 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       }
       return;
     }
+    final wasVisited = visitedTabs.contains(index);
+    visitedTabs.add(index);
     currentIndex.value = index;
-    // if (index == 1 && !_mapTabVisited) {
-    //   _mapTabVisited = true;
-    //   Future.delayed(const Duration(milliseconds: 200), () {
-    //     if (Get.isRegistered<MapController>()) {
-    //       Get.find<MapController>().toggleMapType();
-    //     }
-    //   });
-    // }
+
+    // Mỗi khi người dùng bấm chọn chức năng đăng bài (Tab Camera - index 2),
+    // bắt buộc xóa vị trí cũ và load lại vị trí GPS hiện tại mới nhất
+    if (index == 2 && wasVisited && Get.isRegistered<CameraController>()) {
+      Get.find<CameraController>().refreshLocationAndTime();
+    }
   }
 
   void goToEditProfile() {
@@ -132,7 +149,11 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   // Upload Progress Methods
-  void startUpload({String label = 'Đăng bài viết'}) {
+  void startUpload({
+    String label = 'Đăng bài viết',
+    VoidCallback? onCancel,
+  }) {
+    _onCancelUpload = onCancel;
     uploadLabel.value = label;
     isUploading.value = true;
     uploadProgress.value = 0.0;
@@ -143,6 +164,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   void completeUpload() {
+    _onCancelUpload = null;
     uploadProgress.value = 1.0;
     // Delay để hiển thị 100% trước khi ẩn
     Future.delayed(const Duration(milliseconds: 500), () {
@@ -156,7 +178,10 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   void cancelUpload() {
+    final cancelCallback = _onCancelUpload;
+    _onCancelUpload = null;
     isUploading.value = false;
     uploadProgress.value = 0.0;
+    cancelCallback?.call();
   }
 }

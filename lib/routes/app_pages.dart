@@ -3,9 +3,7 @@ import 'package:get/get.dart';
 import '../modules/camera/bindings/camera_binding.dart';
 import '../modules/camera/views/camera_view.dart';
 import '../modules/emergency/bindings/emergency_binding.dart';
-import '../modules/emergency/controllers/sos_stream_controller.dart';
 import '../modules/emergency/views/emergency_screen.dart';
-import '../modules/emergency/views/sos_stream_view.dart';
 import '../modules/home/bindings/home_binding.dart';
 import '../modules/home/views/home_view.dart';
 import '../modules/login/binding/login_binding.dart';
@@ -57,13 +55,6 @@ class AppPages {
       name: _Paths.EMERGENCY,
       page: () => const EmergencyScreen(),
       binding: EmergencyBinding(),
-    ),
-    GetPage(
-      name: _Paths.SOS_STREAM,
-      page: () => const SosStreamView(),
-      binding: BindingsBuilder(() {
-        Get.lazyPut<SosStreamController>(() => SosStreamController());
-      }),
     ),
     GetPage(
       name: _Paths.VIOLATION_SUBSCRIPTION,
