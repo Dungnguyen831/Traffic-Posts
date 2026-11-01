@@ -17,12 +17,14 @@ class LocalizationService extends Translations {
   Map<String, Map<String, String>> get keys => _keys;
 
   static Future<void> init() async {
-    final en = await rootBundle.loadString('assets/json/locales/en_US.json');
-    final vi = await rootBundle.loadString('assets/json/locales/vi_VN.json');
+    final results = await Future.wait([
+      rootBundle.loadString('assets/json/locales/en_US.json'),
+      rootBundle.loadString('assets/json/locales/vi_VN.json'),
+    ]);
 
     _keys = {
-      'en_US': Map<String, String>.from(json.decode(en)),
-      'vi_VN': Map<String, String>.from(json.decode(vi)),
+      'en_US': Map<String, String>.from(json.decode(results[0])),
+      'vi_VN': Map<String, String>.from(json.decode(results[1])),
     };
   }
 
