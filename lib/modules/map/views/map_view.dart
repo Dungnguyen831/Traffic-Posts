@@ -27,6 +27,7 @@ class MapView extends GetView<MapController> {
                 minZoom: 3.0,
                 maxZoom: 19.0,
                 onMapReady: controller.onMapReady,
+                onPositionChanged: controller.onMapPositionChanged,
                 interactionOptions: const fm.InteractionOptions(
                   flags: fm.InteractiveFlag.all,
                 ),
@@ -52,6 +53,7 @@ class MapView extends GetView<MapController> {
                 // Marker Layer cho Search result, Bài viết tagged, và Sự cố SOS (kèm radar sóng tỏa)
                 Obx(
                   () => fm.MarkerLayer(
+                    rotate: true,
                     markers: controller.markers.toList(),
                   ),
                 ),

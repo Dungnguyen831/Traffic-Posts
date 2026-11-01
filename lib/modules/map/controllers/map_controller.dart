@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -8,10 +9,8 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:traffic_app/widgets/custom_alert.dart';
 
-import '../../../data/models/location_model.dart';
 import '../../../data/models/traffic_post_model.dart';
 import '../../../data/repositories/follow_repository.dart';
 import '../../../data/repositories/traffic_post_repository.dart';
@@ -20,6 +19,7 @@ import '../../../data/services/traffic_post_socket_service.dart';
 import '../../../services/storage_service.dart';
 import '../widgets/post_bottom_sheet.dart';
 import '../widgets/sos_bottom_sheet.dart';
+import '../../dashboard/controllers/dashboard_controller.dart';
 import '../../emergency/controllers/emergency_controller.dart';
 import '../../emergency/views/sos_active_screen.dart';
 
@@ -40,6 +40,36 @@ const List<String> kMapHashtags = [
   'sos',
 ];
 
+/// Nhóm các bài viết nằm gần nhau trên bản đồ theo mức zoom hiện tại
+class _PostCluster {
+  final List<TrafficPostModel> posts;
+  final LatLng center;
+
+  _PostCluster({
+    required this.posts,
+    required this.center,
+  });
+
+  TrafficPostModel get primaryPost => posts.first;
+
+  /// Tâm hình học trung bình của toàn bộ bài viết trong cụm
+  LatLng get centroid {
+    if (posts.isEmpty) return center;
+    double sumLat = 0;
+    double sumLng = 0;
+    int count = 0;
+    for (final p in posts) {
+      if (p.location != null) {
+        sumLat += p.location!.lat;
+        sumLng += p.location!.lng;
+        count++;
+      }
+    }
+    if (count == 0) return center;
+    return LatLng(sumLat / count, sumLng / count);
+  }
+}
+
 class MapController extends GetxController with GetTickerProviderStateMixin {
   // Controller điều khiển flutter_map engine (tránh xung đột tên với MapController của GetX)
   final fm.MapController mapEngineController = fm.MapController();
@@ -47,6 +77,8 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   final TextEditingController searchController = TextEditingController();
   final Dio _dio = Dio();
   final String _apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
+  Timer? _searchDebounce;
+  CancelToken? _autocompleteCancelToken;
 
   final _postRepository = TrafficPostRepository();
   final _followRepository = FollowRepository();
@@ -78,6 +110,30 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   var isLoading = false.obs;
   var placeSuggestions = <Map<String, dynamic>>[].obs;
 
+  // Quản lý tách lớp marker để đảm bảo thứ tự Z-index: Post/Cluster -> Search -> SOS (luôn trên cùng)
+  final List<fm.Marker> _postMarkers = [];
+  final List<fm.Marker> _sosMarkers = [];
+  fm.Marker? _searchResultMarker;
+  double _lastClusteredZoom = 14.0;
+  static const Distance _geoDistance = Distance();
+
+  double get _safeCurrentZoom {
+    try {
+      return mapEngineController.camera.zoom;
+    } catch (_) {
+      return _lastClusteredZoom;
+    }
+  }
+
+  /// Đồng bộ các lớp marker theo đúng thứ tự ưu tiên hiển thị (SOS luôn nằm trên cùng)
+  void _syncCombinedMarkers() {
+    markers.assignAll([
+      ..._postMarkers,
+      ?_searchResultMarker,
+      ..._sosMarkers,
+    ]);
+  }
+
   /// URL template tương ứng cho TileLayer dựa vào MapType hiện tại
   String get currentTileUrl {
     switch (currentMapType.value) {
@@ -104,7 +160,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   void onInit() {
     super.onInit();
     _initMapPostsAndSocket();
-    _checkLocationPermission();
 
     // Lắng nghe danh sách SOS theo thời gian thực
     ever(SosStreamService.to.sosList, (_) {
@@ -165,12 +220,23 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
     _cameraAnimationController!.addListener(() {
       try {
+        final nextZoom = zoomTween.evaluate(animation);
         mapEngineController.move(
           LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
-          zoomTween.evaluate(animation),
+          nextZoom,
         );
       } catch (e) {
         debugPrint('animatedMapMove error: $e');
+      }
+    });
+
+    _cameraAnimationController!.addStatusListener((status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        if ((destZoom - _lastClusteredZoom).abs() >= 0.15) {
+          _lastClusteredZoom = destZoom;
+          _buildPostMarkers(zoom: destZoom);
+        }
       }
     });
 
@@ -181,6 +247,10 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   void moveToLocation(LatLng point, {double zoom = 16.0}) {
     try {
       mapEngineController.move(point, zoom);
+      if ((zoom - _lastClusteredZoom).abs() >= 0.25) {
+        _lastClusteredZoom = zoom;
+        _buildPostMarkers(zoom: zoom);
+      }
     } catch (e) {
       debugPrint('MapController moveToLocation error: $e');
     }
@@ -216,6 +286,8 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   @override
   void onClose() {
+    _searchDebounce?.cancel();
+    _autocompleteCancelToken?.cancel();
     _cameraAnimationController?.dispose();
     _socketService.disconnect();
     searchController.dispose();
@@ -225,33 +297,57 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   void onMapReady() {
     debugPrint('MapController: flutter_map engine is ready');
+    _lastClusteredZoom = _safeCurrentZoom;
+    _buildPostMarkers(zoom: _lastClusteredZoom);
   }
 
-  Future<void> fetchSuggestions(String input) async {
-    if (input.isEmpty) {
+  /// Lắng nghe khi người dùng zoom/pan bản đồ để tính toán lại gom cụm khi mức zoom thay đổi
+  void onMapPositionChanged(fm.MapCamera camera, bool hasGesture) {
+    if ((camera.zoom - _lastClusteredZoom).abs() >= 0.25) {
+      _lastClusteredZoom = camera.zoom;
+      _buildPostMarkers(zoom: camera.zoom);
+    }
+  }
+
+  void fetchSuggestions(String input) {
+    _searchDebounce?.cancel();
+    _autocompleteCancelToken?.cancel();
+
+    if (input.trim().isEmpty) {
       placeSuggestions.clear();
       return;
     }
 
-    try {
-      final response = await _dio.get(
-        'https://maps.googleapis.com/maps/api/place/autocomplete/json',
-        queryParameters: {
-          'input': input,
-          'key': _apiKey,
-          'components': 'country:vn', // Limit to Vietnam
-        },
-      );
-      if (response.statusCode == 200) {
-        final predictions = response.data['predictions'] as List;
-        placeSuggestions.value = predictions.cast<Map<String, dynamic>>();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () async {
+      final cancelToken = CancelToken();
+      _autocompleteCancelToken = cancelToken;
+
+      try {
+        final response = await _dio.get(
+          'https://maps.googleapis.com/maps/api/place/autocomplete/json',
+          queryParameters: {
+            'input': input,
+            'key': _apiKey,
+            'components': 'country:vn', // Limit to Vietnam
+          },
+          cancelToken: cancelToken,
+        );
+        if (response.statusCode == 200) {
+          final predictions = response.data['predictions'] as List;
+          placeSuggestions.value = predictions.cast<Map<String, dynamic>>();
+        }
+      } on DioException catch (e) {
+        if (CancelToken.isCancel(e)) return;
+        debugPrint('Error fetching suggestions: $e');
+      } catch (e) {
+        debugPrint('Error fetching suggestions: $e');
       }
-    } catch (e) {
-      debugPrint('Error fetching suggestions: $e');
-    }
+    });
   }
 
   Future<void> selectSuggestion(Map<String, dynamic> suggestion) async {
+    _searchDebounce?.cancel();
+    _autocompleteCancelToken?.cancel();
     searchController.text = suggestion['description'];
     placeSuggestions.clear();
     await searchLocation(suggestion['description']);
@@ -268,29 +364,25 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
         Location location = locations.first;
         LatLng target = LatLng(location.latitude, location.longitude);
 
-        mapEngineController.move(target, 16.0);
+        moveToLocation(target, zoom: 16.0);
 
-        markers.removeWhere(
-          (m) =>
-              m.key is ValueKey &&
-              (m.key as ValueKey).value == 'search_result',
-        );
-        markers.add(
-          fm.Marker(
-            key: const ValueKey('search_result'),
-            point: target,
-            width: 44,
-            height: 44,
-            child: Tooltip(
-              message: query,
-              child: const Icon(
-                Icons.location_pin,
-                color: Colors.purple,
-                size: 40,
-              ),
+        _searchResultMarker = fm.Marker(
+          key: const ValueKey('search_result'),
+          point: target,
+          width: 44,
+          height: 44,
+          alignment: Alignment.topCenter,
+          rotate: true,
+          child: Tooltip(
+            message: query,
+            child: const Icon(
+              Icons.location_pin,
+              color: Colors.purple,
+              size: 40,
             ),
           ),
         );
+        _syncCombinedMarkers();
       } else {
         CustomAlert.showWarning('map_location_not_found'.tr);
       }
@@ -313,21 +405,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   void toggleTraffic() {
     isTrafficEnabled.value = !isTrafficEnabled.value;
-  }
-
-  Future<void> _checkLocationPermission() async {
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        return;
-      }
-      var status = await Permission.location.status;
-      if (!status.isGranted) {
-        await Permission.location.request();
-      }
-    } catch (e) {
-      debugPrint('MapController _checkLocationPermission error: $e');
-    }
   }
 
   Future<void> goToMyLocation() async {
@@ -354,9 +431,9 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       }
 
       Position position = await Geolocator.getCurrentPosition();
-      mapEngineController.move(
+      moveToLocation(
         LatLng(position.latitude, position.longitude),
-        15.0,
+        zoom: 15.0,
       );
     } catch (e) {
       CustomAlert.showError('${'cannot_get_location'.tr}: $e');
@@ -397,6 +474,9 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
             return;
           }
           upsertPostAndMarker(post);
+          if (Get.isRegistered<DashboardController>()) {
+            Get.find<DashboardController>().onRealtimePostReceived(post);
+          }
         },
         onReconnect: () async {
           debugPrint('[MapController] 🔄 Reconnected! Resync bài viết từ REST...');
@@ -438,7 +518,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   Future<void> loadTaggedPosts() async {
     try {
       final posts = await _postRepository.getPosts(
-        location: '',
         page: 0,
         size: 50,
       );
@@ -471,7 +550,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   Future<void> _resyncPostsFromRest() async {
     try {
       final posts = await _postRepository.getPosts(
-        location: '',
         page: 0,
         size: 50,
       );
@@ -483,16 +561,12 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
             _isEligibleForMap(post)) {
           _postsById[post.id!] = post;
           taggedPosts.add(post);
-
-          final marker = _createMarkerForPost(post);
-          if (marker != null) {
-            markers.add(marker);
-          }
           hasNew = true;
         }
       }
 
       if (hasNew) {
+        _buildPostMarkers();
         debugPrint(
           '[MapController] ✅ Đồng bộ REST bù hoàn tất, đã thêm các bài mới bị lỡ',
         );
@@ -519,45 +593,80 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
     _postsById[post.id!] = post;
     taggedPosts.add(post);
-
-    final newMarker = _createMarkerForPost(post);
-    if (newMarker != null) {
-      // Đảm bảo không trùng key
-      markers.removeWhere((m) => m.key == newMarker.key);
-      markers.add(newMarker);
-      debugPrint('[MapController] 📍 Đã thêm marker realtime cho post: ${post.id}');
-    }
+    _buildPostMarkers();
+    debugPrint('[MapController] 📍 Đã thêm & gom cụm marker realtime cho post: ${post.id}');
   }
 
-  /// Dựng marker cho 1 bài viết
-  fm.Marker? _createMarkerForPost(TrafficPostModel post) {
-    final loc = post.location;
-    if (loc == null) return null;
-
-    // Màu marker theo hashtag đầu tiên khớp
+  /// Trích xuất tag khớp đầu tiên và nhãn hiển thị của bài viết
+  (String firstTag, String displayTag, Color tagColor) _resolvePostTagInfo(
+    TrafficPostModel post,
+  ) {
     final matchingTags = (post.hashtags ?? [])
-        .map((t) => t.toLowerCase())
+        .map((t) => t.toLowerCase().replaceAll('#', '').trim())
         .where((t) => kMapHashtags.contains(t))
         .toList();
     final firstTag = matchingTags.isNotEmpty ? matchingTags.first : '';
     final displayTag = firstTag.isNotEmpty
         ? '#$firstTag'
         : ((post.hashtags?.isNotEmpty ?? false)
-            ? '#${post.hashtags!.first}'
-            : (post.type != null && post.type!.isNotEmpty ? '#${post.type}' : ''));
+            ? '#${post.hashtags!.first.replaceAll('#', '')}'
+            : (post.type != null && post.type!.isNotEmpty
+                ? '#${post.type}'
+                : ''));
     final tagColor = _colorForTag(firstTag);
+    return (firstTag, displayTag, tagColor);
+  }
+
+  /// Điểm ưu tiên của bài viết (SOS > Tai nạn > Báo cáo tai nạn > Kẹt xe > Ngập nước > Giao thông)
+  int _priorityForPost(TrafficPostModel post) {
+    final (firstTag, _, _) = _resolvePostTagInfo(post);
+    switch (firstTag) {
+      case 'sos':
+        return 60;
+      case 'tainan':
+        return 50;
+      case 'baocaotainan':
+        return 40;
+      case 'ketxe':
+        return 30;
+      case 'ngaplutnuoc':
+        return 20;
+      case 'giaothong':
+      default:
+        return 10;
+    }
+  }
+
+  /// Bán kính gom cụm (mét) theo mức zoom hiện tại (tương ứng ~58px trên màn hình)
+  double _clusterRadiusMetersForZoom(double zoom) {
+    return (58.0 * 146000.0) / math.pow(2.0, zoom);
+  }
+
+  /// Dựng marker đơn lẻ cho 1 bài viết (neo chuẩn mũi ghim Alignment.topCenter và tự xoay theo mắt nhìn)
+  fm.Marker? _createMarkerForPost(
+    TrafficPostModel post, {
+    bool showLabel = true,
+  }) {
+    final loc = post.location;
+    if (loc == null) return null;
+
+    final (_, displayTag, tagColor) = _resolvePostTagInfo(post);
+    final shouldShowTag = showLabel && displayTag.isNotEmpty;
 
     return fm.Marker(
       key: ValueKey('post_${post.id}'),
       point: LatLng(loc.lat, loc.lng),
-      width: 85,
-      height: 65,
+      width: 92,
+      height: shouldShowTag ? 64 : 42,
+      alignment: Alignment.topCenter,
+      rotate: true,
       child: GestureDetector(
         onTap: () => _showPostBottomSheet(post),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            if (displayTag.isNotEmpty)
+            if (shouldShowTag)
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 7,
@@ -603,21 +712,252 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     );
   }
 
-  /// Dựng toàn bộ markers từ danh sách taggedPosts
-  void _buildPostMarkers() {
-    // Xóa marker bài viết cũ, giữ search_result và sos nếu có
-    markers.removeWhere(
-      (m) =>
-          m.key is ValueKey &&
-          (m.key as ValueKey).value.toString().startsWith('post_'),
-    );
+  /// Dựng Cluster Marker khi có nhiều bài viết nằm gần nhau hoặc trùng vị trí
+  fm.Marker _createClusterMarker(
+    _PostCluster cluster, {
+    bool showLabel = true,
+  }) {
+    final primary = cluster.primaryPost;
+    final count = cluster.posts.length;
+    final (_, displayTag, tagColor) = _resolvePostTagInfo(primary);
+    final shouldShowTag = showLabel && displayTag.isNotEmpty;
+    final countText = count > 99 ? '99+' : '$count';
 
-    for (final post in taggedPosts) {
-      final marker = _createMarkerForPost(post);
-      if (marker != null) {
-        markers.add(marker);
+    return fm.Marker(
+      key: ValueKey('cluster_${primary.id}_$count'),
+      point: cluster.centroid,
+      width: 112,
+      height: shouldShowTag ? 70 : 48,
+      alignment: Alignment.topCenter,
+      rotate: true,
+      child: GestureDetector(
+        onTap: () => _onClusterTapped(cluster),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            if (shouldShowTag)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: tagColor.withValues(alpha: 0.45),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        displayTag,
+                        style: TextStyle(
+                          color: tagColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tagColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '+${count - 1}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            SizedBox(
+              width: 46,
+              height: 40,
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    color: tagColor,
+                    size: 38,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.38),
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 20,
+                        minHeight: 20,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tagColor,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white, width: 1.8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        countText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Xử lý khi người dùng bấm vào 1 Cluster Marker:
+  /// - Nếu đang zoom xa (< 16.5) và các điểm cách nhau > 25m -> Tự động zoom in tách cụm
+  /// - Nếu đã zoom gần (>= 16.5) hoặc các điểm trùng vị trí (<= 25m) -> Mở BottomSheet xem toàn bộ bài viết trong cụm
+  void _onClusterTapped(_PostCluster cluster) {
+    final currentZoom = _safeCurrentZoom;
+    final center = cluster.centroid;
+
+    double maxSpreadMeters = 0;
+    for (final p in cluster.posts) {
+      if (p.location != null) {
+        final d = _geoDistance.as(
+          LengthUnit.Meter,
+          center,
+          LatLng(p.location!.lat, p.location!.lng),
+        );
+        if (d > maxSpreadMeters) {
+          maxSpreadMeters = d;
+        }
       }
     }
+
+    if (currentZoom < 16.5 && maxSpreadMeters > 25.0) {
+      final targetZoom = (currentZoom + 2.0).clamp(14.5, 17.2);
+      animatedMapMove(center, targetZoom);
+    } else {
+      _showPostsBottomSheet(cluster.posts);
+    }
+  }
+
+  /// Dựng toàn bộ markers từ danh sách taggedPosts có gom cụm theo mức zoom và phân tầng ưu tiên
+  void _buildPostMarkers({double? zoom}) {
+    final currentZoom = zoom ?? _safeCurrentZoom;
+    final radiusMeters = _clusterRadiusMetersForZoom(currentZoom);
+    final showLabel = currentZoom >= 12.5;
+
+    // 1. Sắp xếp bài viết theo độ ưu tiên giảm dần, sau đó theo thời gian mới nhất giảm dần
+    final validPosts = taggedPosts.where((p) => p.location != null).toList()
+      ..sort((a, b) {
+        final prioCmp = _priorityForPost(b).compareTo(_priorityForPost(a));
+        if (prioCmp != 0) return prioCmp;
+        final timeA = a.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final timeB = b.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return timeB.compareTo(timeA);
+      });
+
+    // 2. Gom cụm các bài viết nằm gần nhau trong bán kính radiusMeters
+    final List<_PostCluster> clusters = [];
+    for (final post in validPosts) {
+      final point = LatLng(post.location!.lat, post.location!.lng);
+      _PostCluster? matchedCluster;
+      double minDistance = double.infinity;
+
+      for (final cluster in clusters) {
+        final dist = _geoDistance.as(LengthUnit.Meter, cluster.center, point);
+        if (dist <= radiusMeters && dist < minDistance) {
+          minDistance = dist;
+          matchedCluster = cluster;
+        }
+      }
+
+      if (matchedCluster != null) {
+        matchedCluster.posts.add(post);
+      } else {
+        clusters.add(_PostCluster(posts: [post], center: point));
+      }
+    }
+
+    // 3. Sắp xếp thứ tự vẽ (Z-order từ dưới lên trên):
+    // Marker đơn có độ ưu tiên thấp vẽ trước -> Marker đơn ưu tiên cao -> Cluster Marker vẽ trên cùng
+    clusters.sort((a, b) {
+      final aIsCluster = a.posts.length > 1 ? 1 : 0;
+      final bIsCluster = b.posts.length > 1 ? 1 : 0;
+      if (aIsCluster != bIsCluster) {
+        return aIsCluster.compareTo(bIsCluster);
+      }
+      return _priorityForPost(a.primaryPost)
+          .compareTo(_priorityForPost(b.primaryPost));
+    });
+
+    _postMarkers.clear();
+    for (final cluster in clusters) {
+      if (cluster.posts.length == 1) {
+        final marker = _createMarkerForPost(
+          cluster.posts.first,
+          showLabel: showLabel,
+        );
+        if (marker != null) {
+          _postMarkers.add(marker);
+        }
+      } else {
+        _postMarkers.add(
+          _createClusterMarker(
+            cluster,
+            showLabel: currentZoom >= 12.0,
+          ),
+        );
+      }
+    }
+
+    _syncCombinedMarkers();
   }
 
   Color _colorForTag(String tag) {
@@ -638,9 +978,16 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     }
   }
 
+  TrafficPostModel _resolveFreshPost(TrafficPostModel post) {
+    if (post.id != null && _postsById.containsKey(post.id)) {
+      return _postsById[post.id!]!;
+    }
+    return post;
+  }
+
   void _showPostBottomSheet(TrafficPostModel initialPost) {
     PostBottomSheet.show(
-      post: initialPost,
+      post: _resolveFreshPost(initialPost),
       currentUserId: currentUserId,
       onLike: _toggleLike,
       onFollow: _toggleFollow,
@@ -648,22 +995,86 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     );
   }
 
+  void _showPostsBottomSheet(List<TrafficPostModel> posts) {
+    PostBottomSheet.show(
+      posts: posts.map(_resolveFreshPost).toList(),
+      currentUserId: currentUserId,
+      onLike: _toggleLike,
+      onFollow: _toggleFollow,
+      onReport: _reportPost,
+    );
+  }
+
+  /// Di chuyển camera bản đồ đến vị trí của bài viết được chọn từ Trang chủ
+  void focusOnPost(TrafficPostModel post) {
+    final loc = post.location;
+    if (loc == null) return;
+
+    // Đảm bảo bài viết có marker trên bản đồ
+    if (post.id != null && !_postsById.containsKey(post.id)) {
+      _postsById[post.id!] = post;
+      taggedPosts.add(post);
+      _buildPostMarkers();
+    }
+
+    final target = LatLng(loc.lat, loc.lng);
+    Future.delayed(const Duration(milliseconds: 180), () {
+      animatedMapMove(target, 16.5);
+    });
+  }
+
+  /// Đồng bộ trạng thái Like từ Dashboard sang Map
+  void syncPostLikeState(String postId, bool isLiked, int likes) {
+    final existing = _postsById[postId];
+    if (existing != null) {
+      final updated = existing.copyWith(isLiked: isLiked, likes: likes);
+      _syncToTaggedPosts(updated);
+    }
+  }
+
+  /// Đồng bộ trạng thái Follow từ Dashboard/Profile sang Map
+  void syncUserFollowState(String userId, bool isFollowed) {
+    for (int i = 0; i < taggedPosts.length; i++) {
+      final p = taggedPosts[i];
+      if (p.userId == userId) {
+        final updated = p.copyWith(isFollowedByCurrentUser: isFollowed);
+        taggedPosts[i] = updated;
+        if (updated.id != null) {
+          _postsById[updated.id!] = updated;
+        }
+      }
+    }
+  }
+
   Future<void> _toggleLike(Rx<TrafficPostModel> postRx) async {
     final p = postRx.value;
     if (p.id == null) return;
     final wasLiked = p.isLiked ?? false;
     final prevLikes = p.likes ?? 0;
+    final newLiked = !wasLiked;
+    final newLikes = wasLiked ? prevLikes - 1 : prevLikes + 1;
+
     postRx.value = p.copyWith(
-      isLiked: !wasLiked,
-      likes: wasLiked ? prevLikes - 1 : prevLikes + 1,
+      isLiked: newLiked,
+      likes: newLikes,
     );
     _syncToTaggedPosts(postRx.value);
+    if (Get.isRegistered<DashboardController>()) {
+      final dash = Get.find<DashboardController>();
+      dash.likedState(p.id!).value = newLiked;
+      dash.likeCount(p.id!).value = newLikes;
+    }
 
     try {
       await _postRepository.likePost(p.id!);
     } catch (_) {
       postRx.value = p.copyWith(isLiked: wasLiked, likes: prevLikes);
       _syncToTaggedPosts(postRx.value);
+      if (Get.isRegistered<DashboardController>()) {
+        final dash = Get.find<DashboardController>();
+        dash.likedState(p.id!).value = wasLiked;
+        dash.likeCount(p.id!).value = prevLikes;
+      }
     }
   }
 
@@ -672,14 +1083,27 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     final userId = int.tryParse(p.userId ?? '');
     if (userId == null) return;
     final wasFollowing = p.isFollowedByCurrentUser ?? false;
-    postRx.value = p.copyWith(isFollowedByCurrentUser: !wasFollowing);
-    _syncToTaggedPosts(postRx.value);
+    final newFollowing = !wasFollowing;
+    postRx.value = p.copyWith(isFollowedByCurrentUser: newFollowing);
+    syncUserFollowState(p.userId!, newFollowing);
+    if (Get.isRegistered<DashboardController>()) {
+      Get.find<DashboardController>().syncFollowFromExternal(
+        p.userId!,
+        newFollowing,
+      );
+    }
 
     try {
       await _followRepository.followUser(userId);
     } catch (_) {
       postRx.value = p.copyWith(isFollowedByCurrentUser: wasFollowing);
-      _syncToTaggedPosts(postRx.value);
+      syncUserFollowState(p.userId!, wasFollowing);
+      if (Get.isRegistered<DashboardController>()) {
+        Get.find<DashboardController>().syncFollowFromExternal(
+          p.userId!,
+          wasFollowing,
+        );
+      }
     }
   }
 
@@ -702,13 +1126,8 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   }
 
   void _buildSosMarkers() {
-    // 1. Dọn dẹp các marker SOS cũ (giữ lại marker bài viết 'post_' và 'search_result')
-    markers.removeWhere(
-      (m) =>
-          m.key is ValueKey &&
-          ((m.key as ValueKey).value.toString().startsWith('sos_') ||
-           (m.key as ValueKey).value.toString() == 'my_active_sos_radar'),
-    );
+    // 1. Dọn dẹp danh sách marker SOS cũ
+    _sosMarkers.clear();
 
     // 2. Kiểm tra nếu chính người dùng đang phát tín hiệu SOS -> Hiển thị Radar Marker sóng tỏa
     String myActiveId = '';
@@ -719,7 +1138,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       if (emergencyCtrl.isSosActive.value &&
           emergencyCtrl.activeSosLat.value != 0.0 &&
           emergencyCtrl.activeSosLng.value != 0.0) {
-        markers.add(
+        _sosMarkers.add(
           fm.Marker(
             key: const ValueKey('my_active_sos_radar'),
             point: LatLng(
@@ -729,6 +1148,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
             width: 140,
             height: 140,
             alignment: Alignment.center,
+            rotate: true,
             child: SosRadarMarkerWidget(
               size: 140,
               onTap: () {
@@ -749,13 +1169,14 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       // Bỏ qua nếu là SOS của chính mình vì đã được vẽ radar marker ở trên
       if (myActiveId.isNotEmpty && sos.sosId == myActiveId) continue;
 
-      markers.add(
+      _sosMarkers.add(
         fm.Marker(
           key: ValueKey('sos_${sos.sosId}'),
           point: LatLng(sos.latitude!, sos.longitude!),
           width: 140,
           height: 140,
           alignment: Alignment.center,
+          rotate: true,
           child: SosRadarMarkerWidget(
             size: 140,
             onTap: () => SosBottomSheet.show(sos: sos),
@@ -763,5 +1184,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
         ),
       );
     }
+
+    _syncCombinedMarkers();
   }
 }
