@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http_parser/http_parser.dart';
 
 import '../models/traffic_post_model.dart';
@@ -8,16 +9,75 @@ import '../services/api_service.dart';
 
 class TrafficPostRepository {
   final ApiService _apiService = ApiService();
+  static final Dio _aiDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 30),
+    ),
+  );
+
+  /// Kiểm duyệt ảnh bằng AI (POST /predict)
+  /// Trả về true nếu label == 1 (ảnh giao thông hợp lệ), false nếu label == 0
+  Future<bool> verifyTrafficImage(
+    String filePath, {
+    CancelToken? cancelToken,
+  }) async {
+    final rawUrl = dotenv.env['AI_PREDICT_URL']?.trim();
+    final predictUrl = (rawUrl != null && rawUrl.isNotEmpty)
+        ? rawUrl
+        : 'http://103.249.117.232:46016/predict';
+
+    final fileName = filePath.split(RegExp(r'[/\\]')).last;
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+    });
+
+    final response = await _aiDio.post(
+      predictUrl,
+      data: formData,
+      cancelToken: cancelToken,
+    );
+
+    final data = response.data is String
+        ? jsonDecode(response.data as String)
+        : response.data;
+
+    if (data is Map) {
+      final label = data['label'];
+      return label == 1 || label == '1' || label == true;
+    }
+
+    return false;
+  }
+
   Future<List<TrafficPostModel>> getPosts({
-    required String location,
+    String location = '',
     int page = 0,
     int size = 10,
     String? keyword,
+    String? hashtag,
+    double? lat,
+    double? lng,
+    double? radiusKm,
+    String? sortBy,
   }) async {
     try {
       final queryParams = <String, dynamic>{'page': page, 'size': size};
       if (keyword != null && keyword.isNotEmpty) {
         queryParams['keyword'] = keyword;
+      }
+      if (hashtag != null && hashtag.isNotEmpty) {
+        queryParams['hashtag'] = hashtag;
+      }
+      if (lat != null && lng != null) {
+        queryParams['lat'] = lat;
+        queryParams['lng'] = lng;
+      }
+      if (radiusKm != null) {
+        queryParams['radius'] = radiusKm;
+      }
+      if (sortBy != null && sortBy.isNotEmpty) {
+        queryParams['sortBy'] = sortBy;
       }
       final response = await _apiService.dio.get(
         '/TrafficPost',
@@ -77,6 +137,7 @@ class TrafficPostRepository {
     String status = 'ACTIVE',
     String? filePath,
     void Function(int sent, int total)? onSendProgress,
+    CancelToken? cancelToken,
   }) async {
     try {
       // Tạo JSON object cho TrafficPost
@@ -108,7 +169,7 @@ class TrafficPostRepository {
 
       // Add file if provided
       if (filePath != null && filePath.isNotEmpty) {
-        final fileName = filePath.split('/').last;
+        final fileName = filePath.split(RegExp(r'[/\\]')).last;
         formData.files.add(
           MapEntry(
             'file',
@@ -121,6 +182,7 @@ class TrafficPostRepository {
         '/TrafficPost',
         data: formData,
         onSendProgress: onSendProgress,
+        cancelToken: cancelToken,
       );
 
       if (response.data['success'] == false) {
@@ -130,6 +192,9 @@ class TrafficPostRepository {
       final postData = response.data['data'] ?? response.data;
       return TrafficPostModel.fromJson(postData as Map<String, dynamic>);
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        throw 'Đã hủy đăng bài viết';
+      }
       if (e.response?.statusCode == 403) {
         if (e.response?.data is Map && e.response!.data['message'] != null) {
           throw e.response!.data['message'].toString();

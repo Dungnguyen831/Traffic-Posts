@@ -1,10 +1,13 @@
 import 'package:dio/dio.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
+import 'package:get/get.dart';
 
+import '../../services/notification_service.dart';
 import '../models/login_request.dart';
 import '../models/login_response.dart';
 import '../models/signup_request.dart';
 import '../services/api_service.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 class AuthRepository {
   final ApiService _apiService = ApiService();
@@ -41,17 +44,17 @@ class AuthRepository {
 
   Future<LoginResponse> login(LoginRequest request) async {
     try {
-      String? deviceToken = await _getDeviceToken(); 
-      
+      final String? deviceToken = await _getDeviceToken();
+
       final Map<String, dynamic> requestData = request.toJson();
-      
-      if (deviceToken != null) {
+
+      if (deviceToken != null && deviceToken.isNotEmpty) {
         requestData['deviceToken'] = deviceToken;
       }
 
       final response = await _apiService.dio.post(
         '/auth/login',
-        data: requestData, 
+        data: requestData,
       );
 
       if (response.data['success'] == false) {
@@ -80,19 +83,20 @@ class AuthRepository {
 
   Future<String?> _getDeviceToken() async {
     try {
-      // Xin quyền (Quan trọng cho iOS)
-      await firebaseMessaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      
-      String? token = await firebaseMessaging.getToken();
-      print("🔔 FCM Device Token: $token"); 
+      // Ưu tiên lấy nhanh FCM token đã được NotificationService lấy sẵn khi khởi động
+      if (Get.isRegistered<NotificationService>()) {
+        final cachedToken = NotificationService.to.fcmToken.value;
+        if (cachedToken.isNotEmpty) {
+          return cachedToken;
+        }
+      }
+
+      final String? token = await firebaseMessaging.getToken();
+      debugPrint("🔔 FCM Device Token: $token");
       return token;
     } catch (e) {
-      print("❌ Lỗi lấy Device Token: $e");
-      return null; 
+      debugPrint("❌ Lỗi lấy Device Token: $e");
+      return null;
     }
   }
 }

@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 /// onConnectivityChanged không đáng tin cậy trên iOS/Android.
 class NetworkCheckInterceptor extends Interceptor {
   static const _pollInterval = Duration(seconds: 3);
+  static const _maxWaitDuration = Duration(seconds: 15);
 
   @override
   Future<void> onRequest(
@@ -26,19 +27,40 @@ class NetworkCheckInterceptor extends Interceptor {
       return;
     }
 
-    // Mất mạng — chờ có mạng rồi mới tiếp tục request
-    var resumed = false;
+    // Mất mạng — chờ có mạng rồi mới tiếp tục request (tối đa 15s để tránh rò rỉ bộ nhớ)
+    var settled = false;
 
     StreamSubscription<List<ConnectivityResult>>? sub;
     Timer? pollingTimer;
+    Timer? timeoutTimer;
 
-    void resume() {
-      if (resumed) return;
-      resumed = true;
+    void cleanup() {
       sub?.cancel();
       pollingTimer?.cancel();
+      timeoutTimer?.cancel();
+    }
+
+    void resume() {
+      if (settled) return;
+      settled = true;
+      cleanup();
       handler.next(options);
     }
+
+    void failTimeout() {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      handler.reject(
+        DioException.connectionError(
+          requestOptions: options,
+          reason: 'Không có kết nối mạng',
+        ),
+      );
+    }
+
+    // Giới hạn thời gian chờ tối đa khi mất mạng
+    timeoutTimer = Timer(_maxWaitDuration, failTimeout);
 
     // Cách 1: lắng nghe sự kiện (nhanh hơn nếu OS fire đúng)
     sub = Connectivity().onConnectivityChanged.listen((results) {

@@ -21,25 +21,26 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+
+  // Khởi tạo song song các tác vụ độc lập lúc mở app
+  await Future.wait([
+    Firebase.initializeApp(),
+    dotenv.load(fileName: ".env"),
+    LocalizationService.init(),
+  ]);
 
   // Đăng ký background message handler
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  await dotenv.load(fileName: ".env");
-  await LocalizationService.init();
-
-  // Initialize StorageService
+  // Initialize StorageService trước vì các service/repo sau có thể cần
   final storageService = await Get.putAsync(() => StorageService().init());
 
-  // Initialize AssetsService
-  await Get.putAsync(() => AssetsService().init().then((_) => AssetsService()));
-
-  // Initialize ImagePickerService (warms up the picker platform channel)
-  await Get.putAsync(() => ImagePickerService().init());
-
-  // Initialize NotificationService (FCM)
-  await Get.putAsync(() => NotificationService().init());
+  // Khởi tạo song song các GetxService nền
+  await Future.wait([
+    Get.putAsync(() => AssetsService().init()),
+    Get.putAsync(() => ImagePickerService().init()),
+    Get.putAsync(() => NotificationService().init()),
+  ]);
 
   // Check auto login
   String initialRoute = AppPages.INITIAL;
@@ -48,12 +49,14 @@ void main() async {
   if (credentials != null) {
     try {
       final authRepository = AuthRepository();
-      final loginResponse = await authRepository.login(
-        LoginRequest(
-          username: credentials['username'] ?? '',
-          password: credentials['password'] ?? '',
-        ),
-      );
+      final loginResponse = await authRepository
+          .login(
+            LoginRequest(
+              username: credentials['username'] ?? '',
+              password: credentials['password'] ?? '',
+            ),
+          )
+          .timeout(const Duration(seconds: 8));
 
       // Save user information
       await storageService.saveUserInfo(
@@ -70,14 +73,18 @@ void main() async {
 
       initialRoute = Routes.HOME;
     } catch (e) {
-      // Login failed, stay at LOGIN
       debugPrint("Auto login failed: $e");
-      // Nếu lỗi thì xóa credentials đi để lần sau không tự login sai nữa
-      await storageService.clearCredentials();
+      // Nếu đã có token và thông tin user hợp lệ từ phiên trước mà chỉ lỗi mạng tạm thời,
+      // không xóa mất credentials trừ khi xác thực thất bại
+      final errStr = e.toString();
+      if (errStr.contains('Đăng nhập thất bại') ||
+          errStr.contains('401') ||
+          errStr.contains('400')) {
+        await storageService.clearCredentials();
+      }
     }
   }
 
-  // String initialRoute = Routes.HOME;
   runApp(MyApp(initialRoute: initialRoute));
 }
 
@@ -102,7 +109,7 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           initialRoute: initialRoute,
           getPages: AppPages.routes,
-          unknownRoute: GetPage(name: '/404', page: () => NotFoundPage()),
+          unknownRoute: GetPage(name: '/404', page: () => const NotFoundPage()),
           translations: LocalizationService(),
           locale: LocalizationService.locale,
           fallbackLocale: LocalizationService.fallbackLocale,
