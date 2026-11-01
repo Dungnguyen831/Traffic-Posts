@@ -123,8 +123,8 @@ class DashboardHeader extends StatelessWidget {
             Get.to(
               () => const UserProfileScreen(),
               arguments: {
-                'heroTag': 'user_avatar', 
-                'initialAvatar': profileController.currentAvatarUrl.value, 
+                'heroTag': 'user_avatar',
+                'initialAvatarUrl': profileController.currentAvatarUrl.value,
               },
             );
           },
