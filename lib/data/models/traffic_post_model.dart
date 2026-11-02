@@ -139,6 +139,12 @@ class TrafficPostModel {
     return '$baseUrl/uploads/$avatarUrl';
   }
 
+  /// Bài viết đã bị admin ẩn hoặc xóa (`status == 'DELETED'`)
+  bool get isDeleted => status?.trim().toUpperCase() == 'DELETED';
+
+  /// Bài viết được phép hiển thị trên ứng dụng (`status == 'NORMAL'` hoặc chưa có status nhưng không phải `DELETED`)
+  bool get isVisible => !isDeleted && (status == null || status!.trim().isEmpty || status!.trim().toUpperCase() == 'NORMAL');
+
   TrafficPostModel copyWith({
     String? id,
     String? userId,

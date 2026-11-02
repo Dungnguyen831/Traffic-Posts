@@ -112,6 +112,7 @@ class TrafficPostRepository {
           .map(
             (json) => TrafficPostModel.fromJson(json as Map<String, dynamic>),
           )
+          .where((post) => post.isVisible)
           .toList();
     } on DioException catch (e) {
       if (e.response != null) {
@@ -134,7 +135,7 @@ class TrafficPostRepository {
     required double lng,
     required String address,
     List<String> hashtags = const [],
-    String status = 'ACTIVE',
+    String status = 'NORMAL',
     String? filePath,
     void Function(int sent, int total)? onSendProgress,
     CancelToken? cancelToken,

@@ -316,7 +316,7 @@ class CameraController extends GetxController {
       'lng': currentLng.value,
       'address': location.value,
       'hashtags': List<String>.from(selectedHashtags),
-      'status': 'TRAFFIC_REPORT',
+      'status': 'NORMAL',
       'filePath': imagePath.value,
     };
 

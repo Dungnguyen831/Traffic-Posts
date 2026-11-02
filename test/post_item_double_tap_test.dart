@@ -184,4 +184,53 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 800));
   });
+
+  testWidgets('Report button is hidden on own post and visible on others post',
+      (WidgetTester tester) async {
+    final isLikedRx = false.obs;
+    final likeCountRx = 2.obs;
+    final isFollowedRx = false.obs;
+
+    final post = TrafficPostModel(
+      id: 'post_report_check',
+      userId: '10',
+      userName: 'Nguyen Van A',
+      content: 'Kiểm tra nút báo cáo',
+      timestamp: DateTime.now(),
+      likes: 2,
+      isLiked: false,
+    );
+
+    Widget buildWidget({required int? currentUserId}) {
+      return ScreenUtilInit(
+        designSize: const Size(375, 812),
+        builder: (context, child) => GetMaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PostItem(
+                post: post,
+                currentUserId: currentUserId,
+                isLikedRx: isLikedRx,
+                likeCountRx: likeCountRx,
+                isFollowedRx: isFollowedRx,
+                onLike: () {},
+                onReport: () {},
+                onFollow: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Bài viết của người khác (currentUserId = 99 != 10) -> hiển thị nút Báo cáo
+    await tester.pumpWidget(buildWidget(currentUserId: 99));
+    await tester.pumpAndSettle();
+    expect(find.text('Báo cáo'), findsOneWidget);
+
+    // Bài viết của chính người dùng (currentUserId = 10 == 10) -> ẩn nút Báo cáo
+    await tester.pumpWidget(buildWidget(currentUserId: 10));
+    await tester.pumpAndSettle();
+    expect(find.text('Báo cáo'), findsNothing);
+  });
 }

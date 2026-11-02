@@ -82,9 +82,12 @@ class TrafficPostSocketService {
                 final json = jsonDecode(body) as Map<String, dynamic>;
                 final event = TrafficPostRealtimeEvent.fromJson(json);
 
-                if (event.eventType == 'NEW_POST') {
+                if (event.eventType == 'NEW_POST' ||
+                    event.eventType == 'UPDATE_POST' ||
+                    event.eventType == 'DELETE_POST' ||
+                    event.data.isDeleted) {
                   debugPrint(
-                    '[TrafficPostSocket] 📩 NEW_POST nhận được: ${event.data.id} - ${event.data.content}',
+                    '[TrafficPostSocket] 📩 ${event.eventType} nhận được: ${event.data.id} (status: ${event.data.status})',
                   );
                   onNewPost(event.data);
                 } else {

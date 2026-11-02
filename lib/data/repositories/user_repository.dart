@@ -100,15 +100,28 @@ class UserRepository {
 
       // 3. Parse phần Bài viết (Lấy từ posts -> content do API dùng phân trang)
       List<TrafficPostModel> postsList = [];
+      int rawPostCount = 0;
+      final resolvedUserId = userInfo.id?.toString() ?? userId;
       if (data['posts'] != null && data['posts']['content'] != null) {
-        postsList = (data['posts']['content'] as List)
-            .map((json) => TrafficPostModel.fromJson(json as Map<String, dynamic>))
+        final rawList = data['posts']['content'] as List;
+        rawPostCount = rawList.length;
+        postsList = rawList
+            .map((json) {
+              final post =
+                  TrafficPostModel.fromJson(json as Map<String, dynamic>);
+              if (post.userId == null || post.userId!.trim().isEmpty) {
+                return post.copyWith(userId: resolvedUserId);
+              }
+              return post;
+            })
+            .where((post) => post.isVisible)
             .toList();
       }
 
       return {
         'userInfo': userInfo,
         'posts': postsList,
+        'rawPostCount': rawPostCount,
       };
       
     } on DioException catch (e) {

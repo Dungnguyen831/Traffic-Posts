@@ -651,6 +651,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   /// Kiểm tra bài viết có đủ điều kiện hiển thị trên bản đồ không
   bool _isEligibleForMap(TrafficPostModel post) {
+    if (!post.isVisible) return false;
     final loc = post.location;
     if (loc == null) return false;
 
@@ -736,6 +737,11 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   /// Thêm marker an toàn khi nhận tin realtime (dedupe bằng post.id)
   void upsertPostAndMarker(TrafficPostModel post) {
+    if (post.id != null && !post.isVisible) {
+      syncPostDeleted(post.id!);
+      return;
+    }
+
     final location = post.location;
     if (location == null) {
       return;

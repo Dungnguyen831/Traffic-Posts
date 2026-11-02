@@ -241,13 +241,15 @@ class _PostItemState extends State<PostItem>
 
   /// Kiểm tra bài viết có phải của chính người dùng hiện tại không
   bool get _isMyPost {
+    if (widget.onEdit != null || widget.onDelete != null) return true;
     if (widget.currentUserId == null) return false;
-    final rawUserId = widget.post.userId;
-    if (rawUserId == null || rawUserId.isEmpty) {
-      return widget.onEdit != null || widget.onDelete != null;
-    }
+    final rawUserId = widget.post.userId?.trim();
+    if (rawUserId == null || rawUserId.isEmpty) return false;
     final postUserId = int.tryParse(rawUserId);
-    return postUserId != null && postUserId == widget.currentUserId;
+    if (postUserId != null) {
+      return postUserId == widget.currentUserId;
+    }
+    return rawUserId == widget.currentUserId.toString();
   }
 
   /// Hiện badge "+" khi:
@@ -860,28 +862,29 @@ class _PostItemState extends State<PostItem>
                         ),
                       ),
                     ),
-                    GestureDetector(
-                      onTap: widget.onReport,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 10.w,
-                          vertical: 6.h,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          border: Border.all(color: const Color(0xFFF75555)),
-                          borderRadius: BorderRadius.circular(6.r),
-                        ),
-                        child: Text(
-                          'Báo cáo'.tr,
-                          style: TextStyle(
-                            fontSize: 10.sp,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFFF75555),
+                    if (!_isMyPost)
+                      GestureDetector(
+                        onTap: widget.onReport,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10.w,
+                            vertical: 6.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.transparent,
+                            border: Border.all(color: const Color(0xFFF75555)),
+                            borderRadius: BorderRadius.circular(6.r),
+                          ),
+                          child: Text(
+                            'Báo cáo'.tr,
+                            style: TextStyle(
+                              fontSize: 10.sp,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFFF75555),
+                            ),
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ],

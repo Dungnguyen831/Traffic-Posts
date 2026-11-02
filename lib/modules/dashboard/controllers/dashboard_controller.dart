@@ -384,7 +384,8 @@ class DashboardController extends GetxController {
 
   /// Áp dụng toàn bộ Bộ lọc & Sắp xếp lên `_allPosts` để cập nhật `posts`
   void _applyFiltersAndSort() {
-    Iterable<TrafficPostModel> result = _allPosts;
+    // 0. Luôn chỉ hiển thị bài có status hợp lệ (NORMAL) và loại bỏ bài DELETED
+    Iterable<TrafficPostModel> result = _allPosts.where((p) => p.isVisible);
 
     // 1. Lọc theo từ khóa tìm kiếm (nếu có)
     final kw = currentKeyword.value.trim().toLowerCase();
@@ -626,6 +627,11 @@ class DashboardController extends GetxController {
   /// Nhận bài viết mới realtime từ STOMP WebSocket (do MapController chuyển tiếp)
   void onRealtimePostReceived(TrafficPostModel post) {
     if (post.id == null) return;
+    // Nếu bài viết bị ẩn/xóa (DELETED), loại bỏ khỏi danh sách hiện tại
+    if (!post.isVisible) {
+      syncPostDeleted(post.id!);
+      return;
+    }
     // Bỏ qua nếu là bài viết của chính mình (vì CameraController đã prepend trực tiếp)
     if (currentUserId != null && post.userId == currentUserId.toString()) {
       return;
@@ -752,6 +758,7 @@ class DashboardController extends GetxController {
 
   /// Thêm bài viết mới lên đầu danh sách (không rebuild toàn trang)
   void prependPost(TrafficPostModel post) {
+    if (!post.isVisible) return;
     if (post.id != null) {
       likedState(post.id!).value = post.isLiked ?? false;
       likeCount(post.id!).value = post.likes ?? 0;
@@ -925,7 +932,7 @@ class DashboardController extends GetxController {
             hashtags: post.hashtags ?? const <String>[],
             status: (post.status != null && post.status!.isNotEmpty)
                 ? post.status!
-                : 'TRAFFIC_REPORT',
+                : 'NORMAL',
             timestamp: post.timestamp ?? DateTime.now().toUtc(),
           );
 

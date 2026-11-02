@@ -132,9 +132,12 @@ class UserProfileController extends GetxController {
     if (_profileCache.containsKey(targetUserId)) {
       final cachedData = _profileCache[targetUserId]!;
       userInfo.value = cachedData['userInfo'];
-      posts.assignAll(cachedData['posts']);
+      final cachedPosts = (cachedData['posts'] as List<TrafficPostModel>)
+          .where((p) => p.isVisible)
+          .toList();
+      posts.assignAll(cachedPosts);
 
-      initPostStates(cachedData['posts']);
+      initPostStates(cachedPosts);
 
       isFollowing.value = userInfo.value?.follow ?? false;
       _calculateTotalLikes();
@@ -207,7 +210,10 @@ class UserProfileController extends GetxController {
       );
 
       final newUserInfo = result['userInfo'] as UserInfoModel;
-      final newPosts = result['posts'] as List<TrafficPostModel>;
+      final newPosts = (result['posts'] as List<TrafficPostModel>)
+          .where((p) => p.isVisible)
+          .toList();
+      final rawPostCount = (result['rawPostCount'] as int?) ?? newPosts.length;
 
       initPostStates(newPosts);
 
@@ -235,9 +241,10 @@ class UserProfileController extends GetxController {
         }
       }
 
-      if (newPosts.isEmpty) {
+      if (rawPostCount == 0) {
         hasMore.value = false;
         if (refresh) {
+          posts.clear();
           refreshController.refreshCompleted();
         } else {
           refreshController.loadNoData();
@@ -470,7 +477,7 @@ class UserProfileController extends GetxController {
             hashtags: post.hashtags ?? const <String>[],
             status: (post.status != null && post.status!.isNotEmpty)
                 ? post.status!
-                : 'TRAFFIC_REPORT',
+                : 'NORMAL',
             timestamp: post.timestamp ?? DateTime.now().toUtc(),
           );
 
