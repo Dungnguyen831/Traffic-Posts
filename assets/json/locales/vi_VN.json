@@ -273,5 +273,14 @@
   "hashtag_label_ketxe": "Kẹt xe",
   "hashtag_label_tainan": "Tai nạn",
   "hashtag_label_ngaplutnuoc": "Ngập nước",
-  "hashtag_label_baocaotainan": "Cảnh báo"
+  "hashtag_label_baocaotainan": "Cảnh báo",
+  "post_edit_option": "Chỉnh sửa",
+  "post_delete_option": "Xóa bài",
+  "post_edit_title": "Chỉnh sửa bài viết",
+  "post_edit_subtitle": "Chỉ được chỉnh sửa nội dung",
+  "post_update_success": "Đã cập nhật bài viết thành công",
+  "post_delete_confirm_title": "Xóa bài viết",
+  "post_delete_confirm_message": "Bạn có chắc chắn muốn xóa bài viết này không? Hành động này không thể hoàn tác.",
+  "post_delete_confirm_btn": "Xóa bài",
+  "post_delete_success": "Đã xóa bài viết thành công"
 }

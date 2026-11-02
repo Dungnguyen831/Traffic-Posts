@@ -273,5 +273,14 @@
   "hashtag_label_ketxe": "Traffic jam",
   "hashtag_label_tainan": "Accident",
   "hashtag_label_ngaplutnuoc": "Flooding",
-  "hashtag_label_baocaotainan": "Alert"
+  "hashtag_label_baocaotainan": "Alert",
+  "post_edit_option": "Edit post",
+  "post_delete_option": "Delete post",
+  "post_edit_title": "Edit Post",
+  "post_edit_subtitle": "Edit content only · Original post time is preserved",
+  "post_update_success": "Post updated successfully",
+  "post_delete_confirm_title": "Delete Post",
+  "post_delete_confirm_message": "Are you sure you want to delete this post? This action cannot be undone.",
+  "post_delete_confirm_btn": "Delete",
+  "post_delete_success": "Post deleted successfully"
 }

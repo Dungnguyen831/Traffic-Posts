@@ -18,7 +18,9 @@ import '../../../data/repositories/traffic_post_repository.dart';
 import '../../../services/storage_service.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../map/controllers/map_controller.dart';
+import '../../profile/controllers/user_profile_controller.dart';
 import '../widgets/dashboard_filter_bottom_sheet.dart';
+import '../widgets/edit_post_bottom_sheet.dart';
 import '../widgets/report_bottom_sheet.dart';
 import '../widgets/voice_search_bottom_sheet.dart';
 
@@ -613,11 +615,11 @@ class DashboardController extends GetxController {
   /// Chuyển sang tab Bản đồ và di chuyển tới vị trí của bài viết
   void openPostOnMap(TrafficPostModel post) {
     if (post.location == null) return;
-    if (Get.isRegistered<HomeController>()) {
-      Get.find<HomeController>().changeTab(1);
-    }
     if (Get.isRegistered<MapController>()) {
       Get.find<MapController>().focusOnPost(post);
+    }
+    if (Get.isRegistered<HomeController>()) {
+      Get.find<HomeController>().changeTab(1);
     }
   }
 
@@ -867,5 +869,127 @@ class DashboardController extends GetxController {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
+  }
+
+  /// Đồng bộ nội dung bài viết khi được chỉnh sửa
+  void syncPostContentUpdated(String postId, String newContent) {
+    bool changed = false;
+    for (int i = 0; i < _allPosts.length; i++) {
+      if (_allPosts[i].id == postId) {
+        _allPosts[i] = _allPosts[i].copyWith(content: newContent);
+        changed = true;
+      }
+    }
+    for (int i = 0; i < pendingRealtimePosts.length; i++) {
+      if (pendingRealtimePosts[i].id == postId) {
+        pendingRealtimePosts[i] = pendingRealtimePosts[i].copyWith(
+          content: newContent,
+        );
+      }
+    }
+    if (changed) {
+      _applyFiltersAndSort();
+    }
+  }
+
+  /// Đồng bộ khi bài viết bị xóa
+  void syncPostDeleted(String postId) {
+    final beforeLen = _allPosts.length;
+    _allPosts.removeWhere((p) => p.id == postId);
+    pendingRealtimePosts.removeWhere((p) => p.id == postId);
+    _likedStates.remove(postId);
+    _likeCounts.remove(postId);
+    if (_allPosts.length != beforeLen) {
+      _applyFiltersAndSort();
+    }
+  }
+
+  /// Mở Bottom Sheet chỉnh sửa nội dung bài viết của chính mình
+  void openEditPostSheet(TrafficPostModel post) {
+    final postId = post.id;
+    if (postId == null || postId.isEmpty) return;
+
+    EditPostBottomSheet.show(
+      post: post,
+      onSave: (newContent) async {
+        try {
+          await _postRepository.updatePost(
+            postId: postId,
+            type: (post.type != null && post.type!.isNotEmpty)
+                ? post.type!
+                : 'TRAFFIC_JAM',
+            content: newContent,
+            lat: post.location?.lat ?? 0.0,
+            lng: post.location?.lng ?? 0.0,
+            address: post.location?.address ?? '',
+            hashtags: post.hashtags ?? const <String>[],
+            status: (post.status != null && post.status!.isNotEmpty)
+                ? post.status!
+                : 'TRAFFIC_REPORT',
+            timestamp: post.timestamp ?? DateTime.now().toUtc(),
+          );
+
+          syncPostContentUpdated(postId, newContent);
+          final ownerId = post.userId ?? (currentUserId?.toString() ?? '');
+          UserProfileController.syncExternalPostUpdated(
+            ownerId,
+            postId,
+            newContent,
+          );
+          if (Get.isRegistered<MapController>()) {
+            Get.find<MapController>().syncPostContentUpdated(
+              postId,
+              newContent,
+            );
+          }
+
+          if (Get.isBottomSheetOpen ?? false) {
+            Get.back();
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            CustomAlert.showSuccess('post_update_success'.tr);
+          });
+        } catch (e) {
+          CustomAlert.showError(e.toString());
+        }
+      },
+    );
+  }
+
+  /// Hiển thị hộp thoại xác nhận trước khi xóa bài viết của chính mình
+  void confirmDeletePost(BuildContext context, TrafficPostModel post) {
+    final postId = post.id;
+    if (postId == null || postId.isEmpty) return;
+
+    CustomDialog.showConfirm(
+      context: context,
+      title: 'post_delete_confirm_title'.tr,
+      message: 'post_delete_confirm_message'.tr,
+      confirmText: 'post_delete_confirm_btn'.tr,
+      cancelText: 'profile_cancel'.tr,
+      type: DialogType.error,
+      onConfirm: () => deletePost(post),
+    );
+  }
+
+  /// Xóa bài viết và đồng bộ sang các màn hình
+  Future<void> deletePost(TrafficPostModel post) async {
+    final postId = post.id;
+    if (postId == null || postId.isEmpty) return;
+
+    try {
+      await _postRepository.deletePost(postId);
+
+      syncPostDeleted(postId);
+      final ownerId = post.userId ?? (currentUserId?.toString() ?? '');
+      UserProfileController.syncExternalPostDeleted(ownerId, postId);
+      if (Get.isRegistered<MapController>()) {
+        Get.find<MapController>().syncPostDeleted(postId);
+      }
+
+      CustomAlert.showSuccess('post_delete_success'.tr);
+    } catch (e) {
+      CustomAlert.showError(e.toString());
+    }
   }
 }

@@ -27,6 +27,8 @@ class PostItem extends StatelessWidget {
   final VoidCallback? onTapLocation;
   final void Function(String tag)? onTapHashtag;
   final String? activeHashtag;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   const PostItem({
     super.key,
@@ -43,15 +45,26 @@ class PostItem extends StatelessWidget {
     this.onTapLocation,
     this.onTapHashtag,
     this.activeHashtag,
+    this.onEdit,
+    this.onDelete,
   });
+
+  /// Kiểm tra bài viết có phải của chính người dùng hiện tại không
+  bool get _isMyPost {
+    if (currentUserId == null) return false;
+    final rawUserId = post.userId;
+    if (rawUserId == null || rawUserId.isEmpty) {
+      return onEdit != null || onDelete != null;
+    }
+    final postUserId = int.tryParse(rawUserId);
+    return postUserId != null && postUserId == currentUserId;
+  }
 
   /// Hiện badge "+" khi:
   /// 1. API trả về follow == false
   /// 2. Không phải bài viết của chính mình
   bool _shouldShowFollowBadge(bool isFollowed) {
-    if (isFollowed) return false;
-    final postUserId = int.tryParse(post.userId ?? '');
-    if (postUserId != null && postUserId == currentUserId) return false;
+    if (isFollowed || _isMyPost) return false;
     return true;
   }
 
@@ -389,6 +402,74 @@ class PostItem extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (_isMyPost && (onEdit != null || onDelete != null))
+                  PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    color: Colors.white,
+                    surfaceTintColor: Colors.white,
+                    elevation: 6,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14.r),
+                    ),
+                    icon: Icon(
+                      Icons.more_vert_rounded,
+                      color: const Color(0xFF616161),
+                      size: 22.sp,
+                    ),
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        onEdit?.call();
+                      } else if (value == 'delete') {
+                        onDelete?.call();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      if (onEdit != null)
+                        PopupMenuItem<String>(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(
+                                IconlyLight.edit,
+                                size: 18.sp,
+                                color: AppTheme.textColor,
+                              ),
+                              SizedBox(width: 10.w),
+                              Text(
+                                'post_edit_option'.tr,
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (onDelete != null)
+                        PopupMenuItem<String>(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                IconlyLight.delete,
+                                size: 18.sp,
+                                color: AppTheme.errorColor,
+                              ),
+                              SizedBox(width: 10.w),
+                              Text(
+                                'post_delete_option'.tr,
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.errorColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
               ],
             );
           }),

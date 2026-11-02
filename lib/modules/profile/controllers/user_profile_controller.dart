@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 import 'package:traffic_app/widgets/custom_alert.dart';
+import 'package:traffic_app/widgets/custom_dialog.dart';
 
 import '../../../data/models/traffic_post_model.dart';
 import '../../../data/models/user_info_model.dart';
@@ -10,6 +11,7 @@ import '../../../data/repositories/traffic_post_repository.dart';
 import '../../../data/repositories/user_repository.dart';
 import '../../../services/storage_service.dart';
 import '../../dashboard/controllers/dashboard_controller.dart';
+import '../../dashboard/widgets/edit_post_bottom_sheet.dart';
 import '../../dashboard/widgets/report_bottom_sheet.dart';
 import '../../map/controllers/map_controller.dart';
 import '../../../routes/app_pages.dart';
@@ -20,6 +22,45 @@ class UserProfileController extends GetxController {
   static final Map<String, Map<String, dynamic>> _profileCache = {};
 
   static void clearCache() => _profileCache.clear();
+
+  /// Đồng bộ nội dung bài viết được chỉnh sửa vào bộ nhớ đệm và các instance đang mở
+  static void syncExternalPostUpdated(
+    String userId,
+    String postId,
+    String newContent,
+  ) {
+    for (final entry in _profileCache.entries) {
+      final cachedPosts = entry.value['posts'];
+      if (cachedPosts is List<TrafficPostModel>) {
+        final idx = cachedPosts.indexWhere((p) => p.id == postId);
+        if (idx != -1) {
+          cachedPosts[idx] = cachedPosts[idx].copyWith(content: newContent);
+        }
+      }
+    }
+    for (final tag in <String>['my_profile', userId]) {
+      if (tag.isNotEmpty && Get.isRegistered<UserProfileController>(tag: tag)) {
+        Get.find<UserProfileController>(
+          tag: tag,
+        )._applyLocalPostContentUpdate(postId, newContent);
+      }
+    }
+  }
+
+  /// Đồng bộ xóa bài viết khỏi bộ nhớ đệm và các instance đang mở
+  static void syncExternalPostDeleted(String userId, String postId) {
+    for (final entry in _profileCache.entries) {
+      final cachedPosts = entry.value['posts'];
+      if (cachedPosts is List<TrafficPostModel>) {
+        cachedPosts.removeWhere((p) => p.id == postId);
+      }
+    }
+    for (final tag in <String>['my_profile', userId]) {
+      if (tag.isNotEmpty && Get.isRegistered<UserProfileController>(tag: tag)) {
+        Get.find<UserProfileController>(tag: tag)._applyLocalPostDelete(postId);
+      }
+    }
+  }
 
   final _likedStates = <String, RxBool>{};
   final _likeCounts = <String, RxInt>{};
@@ -392,5 +433,116 @@ class UserProfileController extends GetxController {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
+  }
+
+  void _applyLocalPostContentUpdate(String postId, String newContent) {
+    final idx = posts.indexWhere((p) => p.id == postId);
+    if (idx != -1) {
+      posts[idx] = posts[idx].copyWith(content: newContent);
+    }
+  }
+
+  void _applyLocalPostDelete(String postId) {
+    posts.removeWhere((p) => p.id == postId);
+    _likedStates.remove(postId);
+    _likeCounts.remove(postId);
+    _calculateTotalLikes();
+  }
+
+  /// Mở Bottom Sheet chỉnh sửa nội dung bài viết (giữ nguyên thời gian và các trường khác)
+  void openEditPostSheet(TrafficPostModel post) {
+    final postId = post.id;
+    if (postId == null || postId.isEmpty) return;
+
+    EditPostBottomSheet.show(
+      post: post,
+      onSave: (newContent) async {
+        try {
+          await _postRepository.updatePost(
+            postId: postId,
+            type: (post.type != null && post.type!.isNotEmpty)
+                ? post.type!
+                : 'TRAFFIC_JAM',
+            content: newContent,
+            lat: post.location?.lat ?? 0.0,
+            lng: post.location?.lng ?? 0.0,
+            address: post.location?.address ?? '',
+            hashtags: post.hashtags ?? const <String>[],
+            status: (post.status != null && post.status!.isNotEmpty)
+                ? post.status!
+                : 'TRAFFIC_REPORT',
+            timestamp: post.timestamp ?? DateTime.now().toUtc(),
+          );
+
+          // Cập nhật tại chỗ và đồng bộ sang các màn hình khác
+          final ownerId = post.userId ?? targetUserId;
+          syncExternalPostUpdated(ownerId, postId, newContent);
+          _applyLocalPostContentUpdate(postId, newContent);
+
+          if (Get.isRegistered<DashboardController>()) {
+            Get.find<DashboardController>().syncPostContentUpdated(
+              postId,
+              newContent,
+            );
+          }
+          if (Get.isRegistered<MapController>()) {
+            Get.find<MapController>().syncPostContentUpdated(
+              postId,
+              newContent,
+            );
+          }
+
+          if (Get.isBottomSheetOpen ?? false) {
+            Get.back();
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            CustomAlert.showSuccess('post_update_success'.tr);
+          });
+        } catch (e) {
+          CustomAlert.showError(e.toString());
+        }
+      },
+    );
+  }
+
+  /// Hiển thị hộp thoại xác nhận trước khi xóa bài viết
+  void confirmDeletePost(BuildContext context, TrafficPostModel post) {
+    final postId = post.id;
+    if (postId == null || postId.isEmpty) return;
+
+    CustomDialog.showConfirm(
+      context: context,
+      title: 'post_delete_confirm_title'.tr,
+      message: 'post_delete_confirm_message'.tr,
+      confirmText: 'post_delete_confirm_btn'.tr,
+      cancelText: 'profile_cancel'.tr,
+      type: DialogType.error,
+      onConfirm: () => deletePost(post),
+    );
+  }
+
+  /// Gọi API xóa bài viết và đồng bộ danh sách
+  Future<void> deletePost(TrafficPostModel post) async {
+    final postId = post.id;
+    if (postId == null || postId.isEmpty) return;
+
+    try {
+      await _postRepository.deletePost(postId);
+
+      final ownerId = post.userId ?? targetUserId;
+      syncExternalPostDeleted(ownerId, postId);
+      _applyLocalPostDelete(postId);
+
+      if (Get.isRegistered<DashboardController>()) {
+        Get.find<DashboardController>().syncPostDeleted(postId);
+      }
+      if (Get.isRegistered<MapController>()) {
+        Get.find<MapController>().syncPostDeleted(postId);
+      }
+
+      CustomAlert.showSuccess('post_delete_success'.tr);
+    } catch (e) {
+      CustomAlert.showError(e.toString());
+    }
   }
 }

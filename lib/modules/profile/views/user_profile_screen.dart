@@ -348,9 +348,11 @@ class UserProfileScreen extends StatelessWidget {
                           key: ValueKey('pad_$postId'),
                           padding: EdgeInsets.only(bottom: 20.h),
                           child: RepaintBoundary(
-                            key: ValueKey(postId),
+                            key: ValueKey('${postId}_${post.content.hashCode}'),
                             child: PostItem(
-                              key: ValueKey(postId),
+                              key: ValueKey(
+                                '${postId}_${post.content.hashCode}',
+                              ),
                               post: post,
                               isLikedRx: controller.likedState(postId),
                               likeCountRx: controller.likeCount(postId),
@@ -359,6 +361,15 @@ class UserProfileScreen extends StatelessWidget {
                               onLike: () => controller.toggleLike(post),
                               onReport: () => controller.reportPost(post),
                               onFollow: () {},
+                              onEdit: controller.isMyProfile
+                                  ? () => controller.openEditPostSheet(post)
+                                  : null,
+                              onDelete: controller.isMyProfile
+                                  ? () => controller.confirmDeletePost(
+                                      context,
+                                      post,
+                                    )
+                                  : null,
                               enableHeroAvatar: false,
                             ),
                           ),

@@ -210,31 +210,32 @@ class TrafficPostRepository {
     }
   }
 
-  /// Cập nhật bài viết
+  /// Cập nhật bài viết (giữ nguyên thời gian và các trường khác, chỉ cập nhật nội dung)
   Future<void> updatePost({
     required String postId,
-    required String userId,
     required String type,
     required String content,
     required double lat,
     required double lng,
     required String address,
+    required List<String> hashtags,
     required String status,
+    required DateTime timestamp,
   }) async {
     try {
       final response = await _apiService.dio.put(
         '/TrafficPost/$postId',
         data: {
-          'userId': userId,
           'type': type,
           'content': content,
           'location': {'lat': lat, 'lng': lng, 'address': address},
+          'hashtags': hashtags,
           'status': status,
-          'timestamp': DateTime.now().toIso8601String(),
+          'timestamp': timestamp.toUtc().toIso8601String(),
         },
       );
 
-      if (response.data['success'] == false) {
+      if (response.data is Map && response.data['success'] == false) {
         throw response.data['message'] ?? 'Không thể cập nhật bài viết';
       }
     } on DioException catch (e) {
@@ -286,7 +287,7 @@ class TrafficPostRepository {
     try {
       final response = await _apiService.dio.delete('/TrafficPost/$postId');
 
-      if (response.data['success'] == false) {
+      if (response.data is Map && response.data['success'] == false) {
         throw response.data['message'] ?? 'Không thể xóa bài viết';
       }
     } on DioException catch (e) {

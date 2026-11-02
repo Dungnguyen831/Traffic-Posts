@@ -238,12 +238,20 @@ class DashboardView extends GetView<DashboardController> {
                                   key: ValueKey('pad_$postId'),
                                   padding: EdgeInsets.only(bottom: 20.h),
                                   child: RepaintBoundary(
-                                    key: ValueKey(postId),
+                                    key: ValueKey(
+                                      '${postId}_${post.content.hashCode}',
+                                    ),
                                     child: Obx(() {
                                       final isNew =
                                           controller.newPostId.value == post.id;
+                                      final isOwnPost =
+                                          controller.currentUserId != null &&
+                                          int.tryParse(userId) ==
+                                              controller.currentUserId;
                                       final item = PostItem(
-                                        key: ValueKey(postId),
+                                        key: ValueKey(
+                                          '${postId}_${post.content.hashCode}',
+                                        ),
                                         post: post,
                                         isLikedRx:
                                             controller.likedState(postId),
@@ -257,6 +265,17 @@ class DashboardView extends GetView<DashboardController> {
                                             controller.reportPost(post),
                                         onFollow: () =>
                                             controller.toggleFollow(post),
+                                        onEdit: isOwnPost
+                                            ? () => controller
+                                                .openEditPostSheet(post)
+                                            : null,
+                                        onDelete: isOwnPost
+                                            ? () => controller
+                                                .confirmDeletePost(
+                                                  context,
+                                                  post,
+                                                )
+                                            : null,
                                         currentUserId: controller.currentUserId,
                                         distanceText:
                                             controller.formatDistance(post),
