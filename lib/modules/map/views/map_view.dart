@@ -151,7 +151,7 @@ class MapView extends GetView<MapController> {
             );
           }),
 
-          // Control Buttons (Map Type, Traffic, My Location) - Tự động trượt lên khi mở sheet SOS
+          // Control Buttons (Map Type, My Location) - Tự động trượt lên khi mở sheet SOS
           Obx(() {
             final isEmergencyRegistered = Get.isRegistered<EmergencyController>();
             final isSosActive = isEmergencyRegistered &&
@@ -172,24 +172,6 @@ class MapView extends GetView<MapController> {
                     onPressed: controller.toggleMapType,
                     backgroundColor: AppTheme.backgroundColor,
                     child: const Icon(Icons.layers, color: Colors.black87),
-                  ),
-                  SizedBox(height: 10.h),
-
-                  // Traffic Toggle
-                  Obx(
-                    () => FloatingActionButton(
-                      heroTag: 'traffic',
-                      onPressed: controller.toggleTraffic,
-                      backgroundColor: controller.isTrafficEnabled.value
-                          ? Colors.blue
-                          : AppTheme.backgroundColor,
-                      child: Icon(
-                        Icons.traffic,
-                        color: controller.isTrafficEnabled.value
-                            ? Colors.white
-                            : Colors.black87,
-                      ),
-                    ),
                   ),
                   SizedBox(height: 10.h),
 

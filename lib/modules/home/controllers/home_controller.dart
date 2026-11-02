@@ -89,6 +89,9 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       // Auto-hide banner if permission is now granted
       if (!denied) {
         locationBannerDismissed.value = false;
+        if (Get.isRegistered<MapController>()) {
+          Get.find<MapController>().ensureInitialUserLocation();
+        }
       }
     } catch (e) {
       debugPrint('HomeController checkLocationStatus error: $e');
@@ -111,6 +114,9 @@ class HomeController extends GetxController with WidgetsBindingObserver {
           result == LocationPermission.whileInUse) {
         isLocationPermissionDenied.value = false;
         locationBannerDismissed.value = false;
+        if (Get.isRegistered<MapController>()) {
+          Get.find<MapController>().ensureInitialUserLocation();
+        }
         if (currentIndex.value == 2 &&
             visitedTabs.contains(2) &&
             Get.isRegistered<CameraController>()) {
@@ -136,6 +142,13 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     final wasVisited = visitedTabs.contains(index);
     visitedTabs.add(index);
     currentIndex.value = index;
+
+    // Khi người dùng mở tab Bản đồ (index 1), đảm bảo đã định vị vị trí người dùng
+    if (index == 1 && Get.isRegistered<MapController>()) {
+      Get.find<MapController>().ensureInitialUserLocation(
+        requestPermissionIfDenied: true,
+      );
+    }
 
     // Mỗi khi người dùng bấm chọn chức năng đăng bài (Tab Camera - index 2),
     // bắt buộc xóa vị trí cũ và load lại vị trí GPS hiện tại mới nhất
