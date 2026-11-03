@@ -21,6 +21,9 @@ class ChatMessageList extends StatelessWidget {
 
       return ListView.builder(
         controller: controller.scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         padding: EdgeInsets.only(
           left: 16.w,
           right: 16.w,
@@ -47,7 +50,7 @@ class ChatMessageList extends StatelessWidget {
           return msg.isUser
               ? UserMessageBubble(msg: msg)
               : AiMessageBubble(
-                  text: msg.text,
+                  text: msg.id == 'welcome' ? 'chatbot_welcome'.tr : msg.text,
                   timestamp: msg.timestamp,
                   isError: msg.isError,
                 );
