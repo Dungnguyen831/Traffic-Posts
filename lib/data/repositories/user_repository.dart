@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:get/get.dart' hide FormData, MultipartFile;
 import 'package:http_parser/http_parser.dart';
 
 import '../models/profile_request.dart';
@@ -27,9 +28,9 @@ class UserRepository {
       return ProfileRequest.fromJson(data);
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể tải thông tin cá nhân';
+        throw e.response!.data['message'] ?? 'profile_load_error'.tr;
       }
-      throw 'Lỗi kết nối khi lấy thông tin';
+      throw 'profile_network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -66,9 +67,9 @@ class UserRepository {
       );
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Cập nhật thất bại';
+        throw e.response!.data['message'] ?? 'profile_update_error'.tr;
       }
-      throw 'Lỗi kết nối khi cập nhật';
+      throw 'profile_network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -92,10 +93,10 @@ class UserRepository {
 
       // 1. Trích xuất data
       final data = response.data['data'] ?? response.data;
-      if (data == null) throw 'Không có dữ liệu trả về từ server';
+      if (data == null) throw 'profile_load_error'.tr;
 
       // 2. Parse phần UserInfo
-      if (data['userInfo'] == null) throw 'Không tìm thấy thông tin người dùng';
+      if (data['userInfo'] == null) throw 'profile_load_error'.tr;
       final userInfo = UserInfoModel.fromJson(data['userInfo'] as Map<String, dynamic>);
 
       // 3. Parse phần Bài viết (Lấy từ posts -> content do API dùng phân trang)
@@ -126,9 +127,9 @@ class UserRepository {
       
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể tải trang cá nhân';
+        throw e.response!.data['message'] ?? 'profile_load_error'.tr;
       }
-      throw 'Lỗi kết nối mạng. Vui lòng kiểm tra lại Internet.';
+      throw 'network_error_retry'.tr;
     } catch (e) {
       throw 'Có lỗi xảy ra: ${e.toString()}';
     }
@@ -157,9 +158,9 @@ class UserRepository {
       return [];
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể tải bảng xếp hạng uy tín';
+        throw e.response!.data['message'] ?? 'reputation_ranking_empty'.tr;
       }
-      throw 'Lỗi kết nối khi tải bảng xếp hạng uy tín';
+      throw 'profile_network_error'.tr;
     } catch (e) {
       throw e.toString();
     }

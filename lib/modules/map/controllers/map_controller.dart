@@ -1277,8 +1277,8 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     if (post.id == null) return;
 
     _postRepository
-        .reportPost(postId: post.id!, reason: 'Nội dung không phù hợp')
-        .then((_) => CustomAlert.showSuccess('Đã báo cáo bài viết'))
+        .reportPost(postId: post.id!, reason: 'dashboard_report_reason_inappropriate'.tr)
+        .then((_) => CustomAlert.showSuccess('dashboard_report_success'.tr))
         .catchError((e) => CustomAlert.showError(e.toString()));
   }
 

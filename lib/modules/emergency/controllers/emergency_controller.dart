@@ -206,7 +206,7 @@ class EmergencyController extends GetxController {
   Future<void> sendSosAlert() async {
     final note = noteController.text.trim();
     if (note.isEmpty) {
-      CustomAlert.showWarning('Vui lòng nhập chi tiết sự cố');
+      CustomAlert.showWarning('emergency_note_empty_warning'.tr);
       return;
     }
 
@@ -275,7 +275,7 @@ class EmergencyController extends GetxController {
         );
       }
     } catch (e) {
-      CustomAlert.showError('Không thể phát tín hiệu: $e');
+      CustomAlert.showError('emergency_send_error'.trParams({'error': e.toString()}));
     } finally {
       isLoading.value = false;
       noteController.clear(); 
@@ -299,9 +299,9 @@ class EmergencyController extends GetxController {
 
       resetSosState();
 
-      CustomAlert.showSuccess('Đã đóng tín hiệu cứu hộ');
+      CustomAlert.showSuccess('emergency_closed_success'.tr);
     } catch (e) {
-      CustomAlert.showError('Lỗi khi đóng tín hiệu: $e');
+      CustomAlert.showError('emergency_close_error'.trParams({'error': e.toString()}));
     } finally {
       isLoading.value = false;
     }

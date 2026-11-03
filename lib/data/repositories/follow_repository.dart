@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:get/get.dart';
 
 import '../models/user_info_model.dart';
 import '../services/api_service.dart';
@@ -12,9 +13,9 @@ class FollowRepository {
       await _apiService.dio.post('/follow/$userId');
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể thực hiện hành động';
+        throw e.response!.data['message'] ?? 'action_failed'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -36,9 +37,9 @@ class FollowRepository {
           .toList();
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể tải danh sách đang theo dõi';
+        throw e.response!.data['message'] ?? 'action_failed'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -60,9 +61,9 @@ class FollowRepository {
           .toList();
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể tải danh sách người theo dõi';
+        throw e.response!.data['message'] ?? 'action_failed'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }

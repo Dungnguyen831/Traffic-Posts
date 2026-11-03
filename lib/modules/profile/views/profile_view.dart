@@ -53,7 +53,7 @@ class _ProfileViewState extends State<ProfileView> {
             onPressed: () => Get.back(),
           ),
           title: Text(
-            "Quản lý tài khoản".tr,
+            'profile_management_title'.tr,
             style: TextStyle(
               color: AppTheme.textColor,
               fontSize: 20.sp,
@@ -231,7 +231,7 @@ class _ProfileViewState extends State<ProfileView> {
 
                 CustomTextField(
                   controller: controller.emailController,
-                  hintText: "Email",
+                  hintText: "email_label".tr,
                   prefixIcon: IconlyBroken.message,
                   keyboardType: TextInputType.emailAddress,
                 ),
@@ -270,14 +270,14 @@ class _ProfileViewState extends State<ProfileView> {
 
                 // 3. Nút Lưu
                 PrimaryButton(
-                  text: 'Lưu thay đổi'.tr,
+                  text: 'save_changes'.tr,
                   onPressed: controller.saveProfile,
                 ),
                 SizedBox(height: 16.h),
 
                 // 4. Nút Đăng xuất
                 PrimaryButton(
-                  text: 'Đăng xuất',
+                  text: 'logout'.tr,
                   onPressed: controller.logout,
                   color: Colors.red,
                 ),

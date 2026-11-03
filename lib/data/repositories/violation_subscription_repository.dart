@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:get/get.dart';
 
 import '../datasources/violation_subscription_datasource.dart';
 import '../models/violation_subscription_model.dart';
@@ -16,7 +17,7 @@ class ViolationSubscriptionRepository {
     try {
       return await _dataSource.getSubscriptions();
     } on DioException catch (e) {
-      throw _handleDioError(e, 'Không thể tải danh sách theo dõi biển số');
+      throw _handleDioError(e, 'violation_sub_load_error'.tr);
     } catch (e) {
       throw e.toString();
     }
@@ -29,7 +30,7 @@ class ViolationSubscriptionRepository {
   }) async {
     final cleanPlate = ViolationSubscription.normalizePlate(licensePlate);
     if (!ViolationSubscription.isValidPlate(cleanPlate)) {
-      throw 'Biển số xe không đúng định dạng hợp lệ';
+      throw 'violation_sub_plate_invalid'.tr;
     }
 
     try {
@@ -39,7 +40,7 @@ class ViolationSubscriptionRepository {
       );
       return await _dataSource.subscribe(request);
     } on DioException catch (e) {
-      throw _handleDioError(e, 'Không thể đăng ký theo dõi biển số');
+      throw _handleDioError(e, 'violation_sub_register_error'.tr);
     } catch (e) {
       throw e.toString();
     }
@@ -49,13 +50,13 @@ class ViolationSubscriptionRepository {
   Future<String> unsubscribe(String licensePlate) async {
     final cleanPlate = ViolationSubscription.normalizePlate(licensePlate);
     if (cleanPlate.isEmpty) {
-      throw 'Biển số xe không được để trống';
+      throw 'violation_sub_plate_empty'.tr;
     }
 
     try {
       return await _dataSource.unsubscribe(cleanPlate);
     } on DioException catch (e) {
-      throw _handleDioError(e, 'Không thể hủy theo dõi biển số $cleanPlate');
+      throw _handleDioError(e, '${'violation_sub_delete_error'.tr} $cleanPlate');
     } catch (e) {
       throw e.toString();
     }
@@ -71,7 +72,7 @@ class ViolationSubscriptionRepository {
     final cleanNew = ViolationSubscription.normalizePlate(newPlate);
 
     if (!ViolationSubscription.isValidPlate(cleanNew)) {
-      throw 'Biển số xe không đúng định dạng hợp lệ';
+      throw 'violation_sub_plate_invalid'.tr;
     }
 
     if (cleanOld.isNotEmpty && cleanOld != cleanNew) {
@@ -90,7 +91,7 @@ class ViolationSubscriptionRepository {
     try {
       return await _dataSource.subscribe(request);
     } on DioException catch (e) {
-      throw _handleDioError(e, 'Không thể cập nhật biển số mới');
+      throw _handleDioError(e, 'violation_sub_update_error'.tr);
     } catch (e) {
       throw e.toString();
     }
@@ -101,7 +102,7 @@ class ViolationSubscriptionRepository {
     try {
       return await _dataSource.unsubscribeAll();
     } on DioException catch (e) {
-      throw _handleDioError(e, 'Không thể hủy toàn bộ danh sách theo dõi');
+      throw _handleDioError(e, 'violation_sub_delete_all_error'.tr);
     } catch (e) {
       throw e.toString();
     }
@@ -112,7 +113,7 @@ class ViolationSubscriptionRepository {
     try {
       return await _dataSource.deleteTrackers();
     } on DioException catch (e) {
-      throw _handleDioError(e, 'Không thể xóa trackers theo dõi');
+      throw _handleDioError(e, 'violation_sub_delete_all_error'.tr);
     } catch (e) {
       throw e.toString();
     }

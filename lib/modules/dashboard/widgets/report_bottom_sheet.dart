@@ -15,13 +15,13 @@ class ReportBottomSheet extends StatefulWidget {
 }
 
 class _ReportBottomSheetState extends State<ReportBottomSheet> {
-  String _selectedReason = "";
+  String _selectedReasonKey = "";
   bool _isLoading = false;
-  final List<String> _reasons = [
-    "Tin giả",
-    "Ảnh/video không phù hợp",
-    "Ngôn từ xúc phạm",
-    "Khác (nhập chi tiết)",
+  final List<String> _reasonKeys = [
+    "report_reason_fake_news",
+    "report_reason_inappropriate_media",
+    "report_reason_offensive_language",
+    "report_reason_other",
   ];
 
   @override
@@ -50,7 +50,7 @@ class _ReportBottomSheetState extends State<ReportBottomSheet> {
           SizedBox(height: 24.h),
           // Title
           Text(
-            "Báo cáo",
+            "report_title".tr,
             style: TextStyle(
               fontSize: 24.sp,
               fontWeight: FontWeight.w700,
@@ -62,7 +62,7 @@ class _ReportBottomSheetState extends State<ReportBottomSheet> {
           const Divider(height: 1, color: Color(0xFFEEEEEE)),
           SizedBox(height: 20.h),
           // Reasons List
-          ..._reasons.map((reason) => _buildReasonItem(reason)),
+          ..._reasonKeys.map((reasonKey) => _buildReasonItem(reasonKey)),
           SizedBox(height: 12.h),
           const Divider(height: 1, color: Color(0xFFEEEEEE)),
           SizedBox(height: 20.h),
@@ -71,7 +71,7 @@ class _ReportBottomSheetState extends State<ReportBottomSheet> {
             children: [
               Expanded(
                 child: AppButton(
-                  text: "Hủy",
+                  text: "cancel".tr,
                   onPressed: () => Get.back(),
                   type: ButtonType.secondary,
                 ),
@@ -79,14 +79,14 @@ class _ReportBottomSheetState extends State<ReportBottomSheet> {
               SizedBox(width: 12.w),
               Expanded(
                 child: AppButton(
-                  text: "Gửi",
+                  text: "send".tr,
                   isLoading: _isLoading,
                   onPressed: () async {
-                    if (_selectedReason.isNotEmpty) {
+                    if (_selectedReasonKey.isNotEmpty) {
                       setState(() {
                         _isLoading = true;
                       });
-                      await widget.onReport(_selectedReason);
+                      await widget.onReport(_selectedReasonKey.tr);
                       if (mounted) {
                         setState(() {
                           _isLoading = false;
@@ -104,12 +104,12 @@ class _ReportBottomSheetState extends State<ReportBottomSheet> {
     );
   }
 
-  Widget _buildReasonItem(String reason) {
-    final isSelected = _selectedReason == reason;
+  Widget _buildReasonItem(String reasonKey) {
+    final isSelected = _selectedReasonKey == reasonKey;
     return GestureDetector(
       onTap: () {
         setState(() {
-          _selectedReason = reason;
+          _selectedReasonKey = reasonKey;
         });
       },
       child: Container(
@@ -148,7 +148,7 @@ class _ReportBottomSheetState extends State<ReportBottomSheet> {
             ),
             SizedBox(width: 24.w),
             Text(
-              reason,
+              reasonKey.tr,
               style: TextStyle(
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w600,

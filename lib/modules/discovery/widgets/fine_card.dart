@@ -19,7 +19,9 @@ class FineResultList extends StatelessWidget {
         16.w,
         MediaQuery.of(context).viewPadding.bottom + 80.h,
       ),
-      physics: const BouncingScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       itemCount: records.length,
       itemBuilder: (_, index) => FineCard(
         key: ValueKey(records[index].violationCode.isNotEmpty
@@ -132,7 +134,7 @@ class _FineCardState extends State<FineCard> {
                         child: Text(
                           record.status.isEmpty
                               ? 'discovery_status_unknown'.tr
-                              : record.status,
+                              : (isPaid ? 'discovery_stat_resolved'.tr : 'discovery_stat_pending'.tr),
                           style: TextStyle(
                             fontSize: 11.sp,
                             fontWeight: FontWeight.w700,
@@ -499,7 +501,7 @@ class _ResolutionUnitsSection extends StatelessWidget {
                   if (unit.phone != null && unit.phone!.isNotEmpty) ...[
                     SizedBox(height: 2.h),
                     Text(
-                      'SĐT: ${unit.phone}',
+                      '${'phone_label'.tr}: ${unit.phone}',
                       style: TextStyle(
                         fontSize: 11.sp,
                         color: AppTheme.primaryColor,

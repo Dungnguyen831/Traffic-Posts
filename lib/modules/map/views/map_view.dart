@@ -94,10 +94,10 @@ class MapView extends GetView<MapController> {
                       type: MaterialType.transparency,
                       child: TextField(
                         controller: controller.searchController,
-                        decoration: const InputDecoration(
-                          hintText: 'Tìm kiếm địa điểm...',
+                        decoration: InputDecoration(
+                          hintText: 'map_search_hint'.tr,
                           border: InputBorder.none,
-                          icon: Icon(IconlyBroken.search, color: Colors.grey),
+                          icon: const Icon(IconlyBroken.search, color: Colors.grey),
                         ),
                         onChanged: (value) {
                           controller.fetchSuggestions(value);

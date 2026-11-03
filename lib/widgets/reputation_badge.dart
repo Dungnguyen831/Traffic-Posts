@@ -17,28 +17,40 @@ class ReputationBadgeStyle {
     required this.icon,
   });
 
-  static ReputationBadgeStyle getStyle(String? badgeName) {
+  static String getLocalizedBadge(String? badgeName) {
     switch (badgeName?.trim()) {
       case 'Cần xây dựng':
-        return const ReputationBadgeStyle(
-          backgroundColor: Color(0xFFFFF1E5),
-          textColor: Color(0xFFAE5A1E),
-          icon: Icons.shield_outlined,
-        );
+        return 'reputation_badge_building'.tr;
       case 'Đáng tin cậy':
-        return const ReputationBadgeStyle(
-          backgroundColor: Color(0xFFEAF4FB),
-          textColor: Color(0xFF276A9E),
-          icon: Icons.verified_user_rounded,
-        );
+        return 'reputation_badge_trusted'.tr;
       case 'Người dẫn đường':
+        return 'reputation_badge_leader'.tr;
       default:
-        return const ReputationBadgeStyle(
-          backgroundColor: Color(0xFFE9F7F1),
-          textColor: Color(0xFF16734E),
-          icon: Icons.stars_rounded,
-        );
+        return badgeName ?? 'reputation_badge_leader'.tr;
     }
+  }
+
+  static ReputationBadgeStyle getStyle(String? badgeName) {
+    final trimmed = badgeName?.trim();
+    if (trimmed == 'Cần xây dựng' || trimmed == 'reputation_badge_building'.tr) {
+      return const ReputationBadgeStyle(
+        backgroundColor: Color(0xFFFFF1E5),
+        textColor: Color(0xFFAE5A1E),
+        icon: Icons.shield_outlined,
+      );
+    }
+    if (trimmed == 'Đáng tin cậy' || trimmed == 'reputation_badge_trusted'.tr) {
+      return const ReputationBadgeStyle(
+        backgroundColor: Color(0xFFEAF4FB),
+        textColor: Color(0xFF276A9E),
+        icon: Icons.verified_user_rounded,
+      );
+    }
+    return const ReputationBadgeStyle(
+      backgroundColor: Color(0xFFE9F7F1),
+      textColor: Color(0xFF16734E),
+      icon: Icons.stars_rounded,
+    );
   }
 }
 
@@ -92,7 +104,7 @@ class ReputationBadgeWidget extends StatelessWidget {
           ),
           SizedBox(width: 4.w),
           Text(
-            badge,
+            ReputationBadgeStyle.getLocalizedBadge(badge),
             style: TextStyle(
               fontSize: 10.5.sp,
               fontWeight: FontWeight.w700,
@@ -183,7 +195,7 @@ class ReputationBadgeWidget extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            badge,
+                            ReputationBadgeStyle.getLocalizedBadge(badge),
                             style: TextStyle(
                               fontSize: 15.sp,
                               fontWeight: FontWeight.w700,

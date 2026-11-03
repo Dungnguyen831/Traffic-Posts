@@ -113,8 +113,8 @@ class FollowManagementController extends GetxController
       await _followRepository.followUser(userId);
       CustomAlert.showSuccess(
         wasFollowing
-            ? 'Đã bỏ theo dõi ${user.fullname ?? user.username ?? "người dùng"}'
-            : 'Đã theo dõi ${user.fullname ?? user.username ?? "người dùng"}',
+            ? 'follow_unfollowed_user'.trParams({'name': user.fullname ?? user.username ?? 'user_fallback'.tr})
+            : 'follow_followed_user'.trParams({'name': user.fullname ?? user.username ?? 'user_fallback'.tr}),
       );
     } catch (e) {
       // Rollback trạng thái nếu API lỗi
@@ -123,7 +123,7 @@ class FollowManagementController extends GetxController
       } else {
         followingIds.remove(userId);
       }
-      CustomAlert.showError('Thao tác không thành công: $e');
+      CustomAlert.showError('action_failed_with_error'.trParams({'error': e.toString()}));
     }
   }
 

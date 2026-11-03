@@ -91,7 +91,7 @@ class RankingItemCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        user.fullname ?? user.username ?? 'Người dùng',
+                        user.fullname ?? user.username ?? 'user_fallback'.tr,
                         style: TextStyle(
                           fontSize: 14.sp,
                           fontWeight: FontWeight.w700,

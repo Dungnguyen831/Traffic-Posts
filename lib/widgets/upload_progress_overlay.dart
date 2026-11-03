@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:iconly/iconly.dart';
 
@@ -6,13 +7,13 @@ import '../theme/app_theme.dart';
 
 class UploadProgressOverlay extends StatelessWidget {
   final double progress; // 0.0 to 1.0
-  final String label;
+  final String? label;
   final VoidCallback? onCancel;
 
   const UploadProgressOverlay({
     super.key,
     required this.progress,
-    this.label = 'Đăng bài viết',
+    this.label,
     this.onCancel,
   });
 
@@ -56,7 +57,7 @@ class UploadProgressOverlay extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      label,
+                      label ?? 'upload_post_label'.tr,
                       style: TextStyle(
                         fontSize: 14.sp,
                         fontWeight: FontWeight.w600,

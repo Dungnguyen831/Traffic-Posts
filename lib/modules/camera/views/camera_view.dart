@@ -21,7 +21,9 @@ class CameraView extends GetView<CameraController> {
         backgroundColor: AppTheme.backgroundColor,
         body: SafeArea(
           child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 24.h),
               child: Column(

@@ -32,7 +32,7 @@ class FollowManagementView extends GetView<FollowManagementController> {
             onPressed: () => Get.back(),
           ),
           title: Text(
-            'Quản lý theo dõi'.tr,
+            'follow_management_title'.tr,
             style: TextStyle(
               color: AppTheme.textColor,
               fontSize: 18.sp,
@@ -65,7 +65,7 @@ class FollowManagementView extends GetView<FollowManagementController> {
                     color: AppTheme.textColor,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Tìm kiếm theo tên hoặc username...',
+                    hintText: 'follow_search_hint'.tr,
                     hintStyle: TextStyle(
                       fontSize: 14.sp,
                       color: AppTheme.subTextColor,
@@ -137,14 +137,14 @@ class FollowManagementView extends GetView<FollowManagementController> {
                   Tab(
                     child: Obx(
                       () => Text(
-                        'Người theo dõi (${controller.followers.length})',
+                        'follow_followers_tab'.trParams({'count': controller.followers.length.toString()}),
                       ),
                     ),
                   ),
                   Tab(
                     child: Obx(
                       () => Text(
-                        'Đang theo dõi (${controller.followings.length})',
+                        'follow_following_tab'.trParams({'count': controller.followings.length.toString()}),
                       ),
                     ),
                   ),
@@ -184,11 +184,11 @@ class FollowManagementView extends GetView<FollowManagementController> {
       if (list.isEmpty) {
         return _buildEmptyState(
           title: controller.searchKeyword.value.isNotEmpty
-              ? 'Không tìm thấy kết quả'
-              : 'Chưa có người theo dõi nào',
+              ? 'follow_no_results'.tr
+              : 'follow_no_followers'.tr,
           subtitle: controller.searchKeyword.value.isNotEmpty
-              ? 'Thử tìm kiếm với từ khóa khác'
-              : 'Khi có người khác theo dõi bạn, họ sẽ xuất hiện ở đây',
+              ? 'follow_search_other_keyword'.tr
+              : 'follow_empty_followers_desc'.tr,
           icon: IconlyBroken.profile,
           onRefresh: controller.fetchFollowers,
         );
@@ -226,11 +226,11 @@ class FollowManagementView extends GetView<FollowManagementController> {
       if (list.isEmpty) {
         return _buildEmptyState(
           title: controller.searchKeyword.value.isNotEmpty
-              ? 'Không tìm thấy kết quả'
-              : 'Chưa theo dõi người dùng nào',
+              ? 'follow_no_results'.tr
+              : 'follow_no_following'.tr,
           subtitle: controller.searchKeyword.value.isNotEmpty
-              ? 'Thử tìm kiếm với từ khóa khác'
-              : 'Hãy theo dõi những người dùng tích cực để nhận thông tin giao thông mới nhất',
+              ? 'follow_search_other_keyword'.tr
+              : 'follow_empty_following_desc'.tr,
           icon: Icons.person_add_alt_1_rounded,
           onRefresh: controller.fetchFollowings,
         );
@@ -322,7 +322,7 @@ class FollowManagementView extends GetView<FollowManagementController> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        user.fullname ?? user.username ?? 'Người dùng',
+                        user.fullname ?? user.username ?? 'user_fallback'.tr,
                         style: TextStyle(
                           fontSize: 15.sp,
                           fontWeight: FontWeight.bold,
@@ -397,7 +397,7 @@ class FollowManagementView extends GetView<FollowManagementController> {
                             ),
                             SizedBox(width: 4.w),
                             Text(
-                              following ? 'Đang theo dõi' : 'Theo dõi',
+                              following ? 'follow_status_following'.tr : 'follow_status_follow'.tr,
                               style: TextStyle(
                                 fontSize: 12.sp,
                                 fontWeight: FontWeight.w600,

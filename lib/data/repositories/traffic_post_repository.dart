@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:get/get.dart' hide FormData, MultipartFile;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http_parser/http_parser.dart';
 
@@ -117,11 +118,11 @@ class TrafficPostRepository {
     } on DioException catch (e) {
       if (e.response != null) {
         final errorMessage = e.response!.data is Map
-            ? e.response!.data['message'] ?? 'Không thể tải bài viết'
-            : 'Không thể tải bài viết';
+            ? e.response!.data['message'] ?? 'post_load_error'.tr
+            : 'post_load_error'.tr;
         throw errorMessage;
       }
-      throw 'Lỗi kết nối mạng. Vui lòng kiểm tra kết nối internet.';
+      throw 'network_error_retry'.tr;
     } catch (e) {
       throw 'Có lỗi xảy ra: ${e.toString()}';
     }
@@ -187,25 +188,25 @@ class TrafficPostRepository {
       );
 
       if (response.data['success'] == false) {
-        throw response.data['message'] ?? 'Không thể tạo bài viết';
+        throw response.data['message'] ?? 'post_create_error'.tr;
       }
 
       final postData = response.data['data'] ?? response.data;
       return TrafficPostModel.fromJson(postData as Map<String, dynamic>);
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
-        throw 'Đã hủy đăng bài viết';
+        throw 'post_upload_cancelled'.tr;
       }
       if (e.response?.statusCode == 403) {
         if (e.response?.data is Map && e.response!.data['message'] != null) {
           throw e.response!.data['message'].toString();
         }
-        throw 'Bạn cần tối thiểu 80 điểm uy tín để đăng bài. Hãy tiếp tục tương tác tích cực để khôi phục quyền đăng bài.';
+        throw 'reputation_cannot_post_alert'.tr;
       }
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể tạo bài viết';
+        throw e.response!.data['message'] ?? 'post_create_error'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -237,13 +238,13 @@ class TrafficPostRepository {
       );
 
       if (response.data is Map && response.data['success'] == false) {
-        throw response.data['message'] ?? 'Không thể cập nhật bài viết';
+        throw response.data['message'] ?? 'post_update_error'.tr;
       }
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể cập nhật bài viết';
+        throw e.response!.data['message'] ?? 'post_update_error'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -261,9 +262,9 @@ class TrafficPostRepository {
       );
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể báo cáo bài viết';
+        throw e.response!.data['message'] ?? 'post_report_error'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -275,9 +276,9 @@ class TrafficPostRepository {
       await _apiService.dio.post('/TrafficPost/$postId/like');
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể thực hiện hành động';
+        throw e.response!.data['message'] ?? 'action_failed'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -289,13 +290,13 @@ class TrafficPostRepository {
       final response = await _apiService.dio.delete('/TrafficPost/$postId');
 
       if (response.data is Map && response.data['success'] == false) {
-        throw response.data['message'] ?? 'Không thể xóa bài viết';
+        throw response.data['message'] ?? 'post_delete_error'.tr;
       }
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể xóa bài viết';
+        throw e.response!.data['message'] ?? 'post_delete_error'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }

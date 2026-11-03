@@ -253,10 +253,10 @@ class ProfileController extends GetxController {
   void logout() {
     CustomDialog.showConfirm(
       context: Get.context!,
-      title: 'Đăng xuất',
-      message: 'Bạn có chắc chắn muốn đăng xuất không?',
-      confirmText: 'Đăng xuất',
-      cancelText: 'Hủy',
+      title: 'logout'.tr,
+      message: 'logout_confirm_message'.tr,
+      confirmText: 'logout'.tr,
+      cancelText: 'cancel'.tr,
       type: DialogType.warning,
       onConfirm: () async {
         final storage = StorageService.to;

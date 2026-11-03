@@ -235,7 +235,7 @@ class _SosTopBannerWidgetState extends State<SosTopBannerWidget>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Đang phát tín hiệu cứu hộ',
+                          'sos_broadcasting_alert'.tr,
                           style: TextStyle(
                             color: AppTheme.textColor,
                             fontSize: 14.sp,
@@ -248,7 +248,7 @@ class _SosTopBannerWidgetState extends State<SosTopBannerWidget>
                         Row(
                           children: [
                             Text(
-                              'Chạm để xem chi tiết',
+                              'sos_tap_to_view_details'.tr,
                               style: TextStyle(
                                 color: AppTheme.subTextColor,
                                 fontSize: 11.sp,
@@ -455,7 +455,7 @@ class _SosActiveBottomViewState extends State<SosActiveBottomView>
                           ),
                           SizedBox(width: 4.w),
                           Text(
-                            'Vuốt xuống để xem bản đồ',
+                            'sos_swipe_down_to_view_map'.tr,
                             style: TextStyle(
                               fontSize: 12.sp,
                               color: AppTheme.subTextColor,
@@ -503,7 +503,7 @@ class _SosActiveBottomViewState extends State<SosActiveBottomView>
                               ),
                               SizedBox(width: 6.w),
                               Text(
-                                'Chi tiết sự cố:',
+                                'emergency_incident_details_colon'.tr,
                                 style: TextStyle(
                                   fontSize: 13.sp,
                                   fontWeight: FontWeight.w600,
@@ -514,7 +514,7 @@ class _SosActiveBottomViewState extends State<SosActiveBottomView>
                           ),
                           SizedBox(height: 8.h),
                           Text(
-                            note.isNotEmpty ? note : 'Đang yêu cầu cứu hộ khẩn cấp',
+                            note.isNotEmpty ? note : 'sos_emergency_request_default'.tr,
                             style: TextStyle(
                               fontSize: 15.sp,
                               color: AppTheme.textColor,
@@ -580,7 +580,7 @@ class _SosActiveBottomViewState extends State<SosActiveBottomView>
                           ),
                           SizedBox(height: 8.h),
                           Text(
-                            'Tắt phát tín hiệu',
+                            'sos_turn_off_signal'.tr,
                             style: TextStyle(
                               fontSize: 12.sp,
                               color: AppTheme.errorColor,

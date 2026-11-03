@@ -55,7 +55,7 @@ class PostBottomSheet {
       if (p.type != null && p.type!.isNotEmpty) {
         return '#${p.type}';
       }
-      return 'Báo cáo #${index + 1}';
+      return 'map_report_tag'.trParams({'index': '${index + 1}'});
     }
 
     Get.bottomSheet(
@@ -117,7 +117,7 @@ class PostBottomSheet {
                             SizedBox(width: 8.w),
                             Expanded(
                               child: Text(
-                                'Có $total báo cáo tại khu vực này',
+                                'map_reports_in_area'.trParams({'total': '$total'}),
                                 style: TextStyle(
                                   fontSize: 13.sp,
                                   fontWeight: FontWeight.w700,

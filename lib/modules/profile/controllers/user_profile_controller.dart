@@ -357,7 +357,7 @@ class UserProfileController extends GetxController {
           isFollowing.value,
         );
       }
-      CustomAlert.showError('Không thể thực hiện. Vui lòng thử lại!');
+      CustomAlert.showError('action_failed'.tr);
     }
   }
 
@@ -427,7 +427,7 @@ class UserProfileController extends GetxController {
             await _postRepository.reportPost(postId: post.id!, reason: reason);
             Get.back();
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              CustomAlert.showSuccess('Báo cáo bài viết thành công');
+              CustomAlert.showSuccess('dashboard_report_success'.tr);
             });
           } catch (e) {
             Get.back();

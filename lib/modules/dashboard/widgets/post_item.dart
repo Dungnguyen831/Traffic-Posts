@@ -573,7 +573,7 @@ class _PostItemState extends State<PostItem>
                                 children: [
                                   Flexible(
                                     child: Text(
-                                      post.userName ?? 'Người dùng',
+                                      post.userName ?? 'user_fallback'.tr,
                                       style: TextStyle(
                                         fontSize: 15.2.sp,
                                         fontWeight: FontWeight.w600,
@@ -876,7 +876,7 @@ class _PostItemState extends State<PostItem>
                             borderRadius: BorderRadius.circular(6.r),
                           ),
                           child: Text(
-                            'Báo cáo'.tr,
+                            'report'.tr,
                             style: TextStyle(
                               fontSize: 10.sp,
                               fontWeight: FontWeight.w600,

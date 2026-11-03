@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:iconly/iconly.dart';
 
@@ -174,7 +175,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
                             ),
                             SizedBox(width: 6.w),
                             Text(
-                              'Chạm đúp hoặc dùng 2 ngón tay để phóng to',
+                              'image_viewer_zoom_hint'.tr,
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontSize: 11.5.sp,

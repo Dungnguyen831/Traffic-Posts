@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import 'package:get/get.dart';
 import '../models/violation_subscription_model.dart';
 import '../services/api_service.dart';
 
@@ -28,7 +29,7 @@ class ViolationSubscriptionRemoteDataSourceImpl
 
     if (rawData is Map<String, dynamic>) {
       if (rawData['success'] == false) {
-        throw rawData['message'] ?? 'Không thể lấy danh sách theo dõi biển số';
+        throw rawData['message'] ?? 'violation_sub_load_error'.tr;
       }
 
       final list = rawData['data'];
@@ -49,7 +50,7 @@ class ViolationSubscriptionRemoteDataSourceImpl
       data: request.toJson(),
     );
 
-    return _parseMessage(response.data, 'Thao tác thành công', 'Đăng ký theo dõi thất bại');
+    return _parseMessage(response.data, 'violation_sub_success_register'.tr, 'violation_sub_register_error'.tr);
   }
 
   @override
@@ -59,14 +60,14 @@ class ViolationSubscriptionRemoteDataSourceImpl
       final response = await _apiService.dio.delete(
         '/violations/subscription/$cleanPlate',
       );
-      return _parseMessage(response.data, 'Đã hủy theo dõi biển số', 'Hủy theo dõi thất bại');
+      return _parseMessage(response.data, 'violation_sub_delete_confirm_title'.tr, 'violation_sub_delete_error'.tr);
     } on DioException catch (e) {
       // Fallback sang endpoint DELETE /violations/subscription nếu route có path variable không tồn tại hoặc bị từ chối
       if (e.response?.statusCode == 404 || e.response?.statusCode == 405) {
         final fallbackResponse = await _apiService.dio.delete(
           '/violations/subscription',
         );
-        return _parseMessage(fallbackResponse.data, 'Đã hủy theo dõi biển số', 'Hủy theo dõi thất bại');
+        return _parseMessage(fallbackResponse.data, 'violation_sub_delete_confirm_title'.tr, 'violation_sub_delete_error'.tr);
       }
       rethrow;
     }
@@ -78,7 +79,7 @@ class ViolationSubscriptionRemoteDataSourceImpl
       '/violations/subscription',
     );
 
-    return _parseMessage(response.data, 'Đã hủy toàn bộ theo dõi', 'Hủy toàn bộ theo dõi thất bại');
+    return _parseMessage(response.data, 'violation_sub_success_delete_all'.tr, 'violation_sub_delete_all_error'.tr);
   }
 
   @override
@@ -87,7 +88,7 @@ class ViolationSubscriptionRemoteDataSourceImpl
       '/violations/trackers',
     );
 
-    return _parseMessage(response.data, 'Đã xóa trackers theo dõi', 'Xóa trackers thất bại');
+    return _parseMessage(response.data, 'violation_sub_success_delete_all'.tr, 'violation_sub_delete_all_error'.tr);
   }
 
   dynamic _decodeData(dynamic raw) {

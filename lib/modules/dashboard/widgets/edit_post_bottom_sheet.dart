@@ -289,7 +289,7 @@ class _EditPostBottomSheetState extends State<EditPostBottomSheet> {
                         Expanded(
                           flex: 2,
                           child: AppButton(
-                            text: 'Lưu thay đổi'.tr,
+                            text: 'save_changes'.tr,
                             type: _isSaving
                                 ? ButtonType.secondary
                                 : ButtonType.primary,

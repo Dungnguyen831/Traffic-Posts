@@ -79,7 +79,7 @@ class SosBottomSheet {
                   SizedBox(width: 12.w),
                   Expanded(
                     child: Text(
-                      'Tín hiệu SOS',
+                      'sos_sheet_title'.tr,
                       style: TextStyle(
                         fontSize: 18.sp,
                         fontWeight: FontWeight.bold,
@@ -100,7 +100,7 @@ class SosBottomSheet {
               Text(
                 (sos.note != null && sos.note!.isNotEmpty)
                     ? sos.note!
-                    : 'Cần hỗ trợ khẩn cấp!',
+                    : 'sos_need_support_urgent'.tr,
                 style: TextStyle(
                   fontSize: 16.sp,
                   fontWeight: FontWeight.w500,
@@ -117,7 +117,7 @@ class SosBottomSheet {
                   Text(
                     (sos.phoneNumber != null && sos.phoneNumber!.isNotEmpty)
                         ? sos.phoneNumber!
-                        : 'Không có số điện thoại',
+                        : 'sos_no_phone_number'.tr,
                     style: TextStyle(
                       fontSize: 15.sp,
                       color: AppTheme.textColor, 
@@ -133,7 +133,7 @@ class SosBottomSheet {
                   // Nút Đóng (Dùng AppButton type secondary)
                   Expanded(
                     child: AppButton(
-                      text: 'Đóng',
+                      text: 'close'.tr,
                       type: ButtonType.secondary, 
                       onPressed: () => Get.back(),
                     ),
@@ -144,7 +144,7 @@ class SosBottomSheet {
                   Expanded(
                     flex: 2,
                     child: AppButton(
-                      text: 'Gọi hỗ trợ',
+                      text: 'sos_call_support'.tr,
                       icon: Icons.call, 
                       type: ButtonType.primary, 
                       onPressed: () async {
@@ -156,10 +156,10 @@ class SosBottomSheet {
                           if (await canLaunchUrl(launchUri)) {
                             await launchUrl(launchUri, mode: LaunchMode.externalApplication);
                           } else {
-                            CustomAlert.showError('Không thể mở trình gọi điện trên thiết bị này'); 
+                            CustomAlert.showError('sos_cannot_open_dialer'.tr); 
                           }
                         } else {
-                          CustomAlert.showWarning('Người này không cung cấp số điện thoại!'); 
+                          CustomAlert.showWarning('sos_no_phone_warning'.tr); 
                         }
                       },
                     ),

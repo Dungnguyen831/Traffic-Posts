@@ -21,7 +21,7 @@ class AuthRepository {
       );
 
       if (response.data['success'] == false) {
-        throw response.data['message'] ?? 'Đăng ký thất bại';
+        throw response.data['message'] ?? 'signup_failed'.tr;
       }
 
       // Save token if available
@@ -32,11 +32,11 @@ class AuthRepository {
     } on DioException catch (e) {
       if (e.response != null) {
         if (e.response!.data is Map) {
-          throw e.response!.data['message'] ?? 'Đăng ký thất bại';
+          throw e.response!.data['message'] ?? 'signup_failed'.tr;
         }
-        throw 'Đăng ký thất bại';
+        throw 'signup_failed'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -58,7 +58,7 @@ class AuthRepository {
       );
 
       if (response.data['success'] == false) {
-        throw response.data['message'] ?? 'Đăng nhập thất bại';
+        throw response.data['message'] ?? 'login_failed'.tr;
       }
 
       // Parse login response
@@ -71,11 +71,11 @@ class AuthRepository {
     } on DioException catch (e) {
       if (e.response != null) {
         if (e.response!.data is Map) {
-          throw e.response!.data['message'] ?? 'Đăng nhập thất bại';
+          throw e.response!.data['message'] ?? 'login_failed'.tr;
         }
-        throw 'Đăng nhập thất bại';
+        throw 'login_failed'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
