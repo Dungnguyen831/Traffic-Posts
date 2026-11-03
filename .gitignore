@@ -49,3 +49,6 @@ app.*.map.json
 pubspec.lock
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
+
+.kotlin/
+android/.kotlin/
