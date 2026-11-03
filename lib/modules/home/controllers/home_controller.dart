@@ -7,17 +7,19 @@ import 'package:permission_handler/permission_handler.dart' hide ServiceStatus;
 import 'package:traffic_app/modules/camera/controllers/camera_controller.dart';
 import 'package:traffic_app/modules/dashboard/controllers/dashboard_controller.dart';
 import 'package:traffic_app/modules/map/controllers/map_controller.dart';
-import 'package:traffic_app/routes/app_pages.dart';
 
 class HomeController extends GetxController with WidgetsBindingObserver {
   // Bottom Navigation State
   var currentIndex = 0.obs;
   final visitedTabs = <int>{0, 1}.obs;
 
+  // Thu nhỏ thanh điều hướng khi người dùng cuộn xuống xem nội dung
+  final isNavBarCollapsed = false.obs;
+
   // Upload Progress State
   var isUploading = false.obs;
   var uploadProgress = 0.0.obs;
-  var uploadLabel = 'Đăng bài viết'.obs;
+  var uploadLabel = 'upload_post_label'.tr.obs;
   VoidCallback? _onCancelUpload;
 
   // Location Permission / Service State
@@ -132,16 +134,35 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     locationBannerDismissed.value = true;
   }
 
+  /// Lắng nghe cuộn dọc của các tab: cuộn xuống -> thu nhỏ thanh điều hướng,
+  /// cuộn lên hoặc về đầu danh sách -> mở rộng lại.
+  bool handleScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+
+    if (notification is ScrollUpdateNotification) {
+      final delta = notification.scrollDelta ?? 0;
+      if (notification.metrics.pixels <=
+          notification.metrics.minScrollExtent + 4) {
+        isNavBarCollapsed.value = false;
+      } else if (notification.dragDetails != null && delta.abs() > 1.5) {
+        isNavBarCollapsed.value = delta > 0;
+      }
+    }
+    return false;
+  }
+
   void changeTab(int index) {
     if (index == 0 && currentIndex.value == 0) {
       if (Get.isRegistered<DashboardController>()) {
         Get.find<DashboardController>().scrollToTop();
+        isNavBarCollapsed.value = false;
       }
       return;
     }
     final wasVisited = visitedTabs.contains(index);
     visitedTabs.add(index);
     currentIndex.value = index;
+    isNavBarCollapsed.value = false;
 
     // Khi người dùng mở tab Bản đồ (index 1), đảm bảo đã định vị vị trí người dùng
     if (index == 1 && Get.isRegistered<MapController>()) {
@@ -157,17 +178,13 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  void goToEditProfile() {
-    Get.toNamed(Routes.PROFILE);
-  }
-
   // Upload Progress Methods
   void startUpload({
-    String label = 'Đăng bài viết',
+    String? label,
     VoidCallback? onCancel,
   }) {
     _onCancelUpload = onCancel;
-    uploadLabel.value = label;
+    uploadLabel.value = label ?? 'upload_post_label'.tr;
     isUploading.value = true;
     uploadProgress.value = 0.0;
   }

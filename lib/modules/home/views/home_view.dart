@@ -29,25 +29,30 @@ class HomeView extends GetView<HomeController> {
       body: Stack(
         children: [
           // 1. Main Tab Views (Lazy mounted for tabs 2, 3, 4)
-          Obx(() {
-            final visited = controller.visitedTabs;
-            return IndexedStack(
-              index: controller.currentIndex.value,
-              children: [
-                const DashboardView(),
-                const MapView(),
-                visited.contains(2)
-                    ? const CameraView()
-                    : const SizedBox.shrink(),
-                visited.contains(3)
-                    ? const DiscoveryView()
-                    : const SizedBox.shrink(),
-                visited.contains(4)
-                    ? const ChatbotView()
-                    : const SizedBox.shrink(),
-              ],
-            );
-          }),
+          // NotificationListener bắt sự kiện cuộn dọc từ mọi tab để thu nhỏ /
+          // mở rộng thanh điều hướng.
+          NotificationListener<ScrollNotification>(
+            onNotification: controller.handleScrollNotification,
+            child: Obx(() {
+              final visited = controller.visitedTabs;
+              return IndexedStack(
+                index: controller.currentIndex.value,
+                children: [
+                  const DashboardView(),
+                  const MapView(),
+                  visited.contains(2)
+                      ? const CameraView()
+                      : const SizedBox.shrink(),
+                  visited.contains(3)
+                      ? const DiscoveryView()
+                      : const SizedBox.shrink(),
+                  visited.contains(4)
+                      ? const ChatbotView()
+                      : const SizedBox.shrink(),
+                ],
+              );
+            }),
+          ),
 
           // 2. Liquid Glass Bottom Bar
           SafeArea(
@@ -57,6 +62,9 @@ class HomeView extends GetView<HomeController> {
               child: Obx(
                 () => LiquidGlassBottomBar(
                   selectedIndex: controller.currentIndex.value,
+                  collapsed: controller.isNavBarCollapsed.value,
+                  onExpandRequested: () =>
+                      controller.isNavBarCollapsed.value = false,
                   onTabSelected: controller.changeTab,
                   tabs: [
                     LiquidGlassBottomBarTab(

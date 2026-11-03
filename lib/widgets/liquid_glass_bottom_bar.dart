@@ -1,35 +1,19 @@
-// ignore_for_file: deprecated_member_use
-
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 import 'package:motor/motor.dart';
+import 'package:traffic_app/theme/app_theme.dart';
 
-/// Creates a jelly transform matrix based on velocity for organic squash and stretch effect
-Matrix4 _buildJellyTransform({
-  required Offset velocity,
-  double maxDistortion = 0.7,
-  double velocityScale = 1000.0,
-}) {
-  final speed = velocity.distance;
-  final direction = speed > 0 ? velocity / speed : Offset.zero;
-  final distortionFactor =
-      (speed / velocityScale).clamp(0.0, 1.0) * maxDistortion;
+/// Creates a horizontal jelly squash-and-stretch matrix from 1D drag velocity.
+Matrix4 _buildJellyTransform(double velocity) {
+  final distortion = (velocity.abs() / 10.0).clamp(0.0, 1.0) * 0.8;
+  if (distortion == 0) return Matrix4.identity();
 
-  if (distortionFactor == 0) return Matrix4.identity();
-
-  final squashX = 1.0 - (direction.dx.abs() * distortionFactor * 0.5);
-  final squashY = 1.0 - (direction.dy.abs() * distortionFactor * 0.5);
-  final stretchX = 1.0 + (direction.dy.abs() * distortionFactor * 0.3);
-  final stretchY = 1.0 + (direction.dx.abs() * distortionFactor * 0.3);
-
-  final scaleX = squashX * stretchX;
-  final scaleY = squashY * stretchY;
-
-  final matrix = Matrix4.identity();
-  matrix.scale(scaleX, scaleY);
-  return matrix;
+  final scaleX = 1.0 - (distortion * 0.5);
+  final scaleY = 1.0 + (distortion * 0.3);
+  return Matrix4.diagonal3Values(scaleX, scaleY, 1.0);
 }
 
 class LiquidGlassBottomBarTab {
@@ -37,27 +21,11 @@ class LiquidGlassBottomBarTab {
     required this.label,
     required this.icon,
     this.selectedIcon,
-    this.glowColor,
   });
 
   final String label;
   final IconData icon;
   final IconData? selectedIcon;
-  final Color? glowColor;
-}
-
-class LiquidGlassBottomBarExtraButton {
-  const LiquidGlassBottomBarExtraButton({
-    required this.icon,
-    required this.onTap,
-    required this.label,
-    this.size = 64,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-  final String label;
-  final double size;
 }
 
 class LiquidGlassBottomBar extends StatefulWidget {
@@ -66,142 +34,158 @@ class LiquidGlassBottomBar extends StatefulWidget {
     required this.tabs,
     required this.selectedIndex,
     required this.onTabSelected,
-    this.extraButton,
-    this.spacing = 8,
     this.horizontalPadding = 20,
     this.bottomPadding = 20,
     this.barHeight = 64,
-    this.glassSettings,
-    this.showIndicator = true,
-    this.indicatorColor,
-    this.fake = false,
+    this.collapsedBarHeight = 50,
+    this.collapsed = false,
+    this.onExpandRequested,
   });
 
   final List<LiquidGlassBottomBarTab> tabs;
   final int selectedIndex;
   final ValueChanged<int> onTabSelected;
-  final LiquidGlassBottomBarExtraButton? extraButton;
-  final double spacing;
   final double horizontalPadding;
   final double bottomPadding;
   final double barHeight;
-  final LiquidGlassSettings? glassSettings;
-  final bool showIndicator;
-  final Color? indicatorColor;
-  final bool fake;
+
+  /// Height of the bar when [collapsed] is true (labels hidden).
+  final double collapsedBarHeight;
+
+  /// When true the bar shrinks (narrower, shorter, labels hidden),
+  /// e.g. while the user scrolls down a feed.
+  final bool collapsed;
+
+  /// Called when the user interacts with the collapsed bar to expand it back.
+  final VoidCallback? onExpandRequested;
 
   @override
   State<LiquidGlassBottomBar> createState() => _LiquidGlassBottomBarState();
 }
 
 class _LiquidGlassBottomBarState extends State<LiquidGlassBottomBar> {
-  Widget _buildTabPill(int from, int to) {
-    final tabCount = to - from;
-    final selectedInRange =
-        widget.selectedIndex >= from && widget.selectedIndex < to;
-    final localIndex = selectedInRange ? widget.selectedIndex - from : 0;
+  bool _isHolding = false;
 
-    return _TabIndicator(
-      fake: widget.fake,
-      tabIndex: localIndex,
-      tabCount: tabCount,
-      visible: widget.showIndicator && selectedInRange,
-      indicatorColor: widget.indicatorColor,
-      onTabChanged: (i) => widget.onTabSelected(i + from),
-      child: LiquidGlass.grouped(
-        clipBehavior: Clip.none,
-        shape: const LiquidRoundedSuperellipse(borderRadius: 32),
-        child: Stack(
-          children: [
-            // White overlay so glass always appears light on any background
-            if (widget.selectedIndex == 1)
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFFFFF).withValues(alpha: 1.50),
-                    borderRadius: BorderRadius.circular(32),
-                  ),
-                ),
-              ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              height: widget.barHeight,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  for (var i = from; i < to; i++)
-                    Expanded(
-                      child: _BottomBarTab(
-                        tab: widget.tabs[i],
-                        selected: widget.selectedIndex == i,
-                        onTap: () => widget.onTabSelected(i),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _handleHoldChanged(bool isHolding) {
+    if (_isHolding != isHolding) {
+      setState(() => _isHolding = isHolding);
+    }
+    if (isHolding && widget.collapsed) {
+      widget.onExpandRequested?.call();
+    }
+  }
+
+  void _selectTab(int index) {
+    if (widget.collapsed) {
+      widget.onExpandRequested?.call();
+    }
+    widget.onTabSelected(index);
   }
 
   @override
   Widget build(BuildContext context) {
-    final brightness = MediaQuery.platformBrightnessOf(context);
-    final isDark = brightness == Brightness.dark;
+    final glassSettings = LiquidGlassSettings(
+      refractiveIndex: 1.12,
+      thickness: 18,
+      blur: 8,
+      saturation: 1.1,
+      lightIntensity: 1.1,
+      ambientStrength: 0.5,
+      lightAngle: math.pi / 4,
+      glassColor: Colors.white.withValues(alpha: 0.55),
+    );
 
-    final glassSettings =
-        widget.glassSettings ??
-        LiquidGlassSettings(
-          refractiveIndex: 1.08,
-          thickness: 20,
-          blur: 10,
-          saturation: 1.1,
-          lightIntensity: isDark ? .8 : 1.4,
-          ambientStrength: isDark ? .3 : .7,
-          lightAngle: math.pi / 4,
-          glassColor: const Color.fromARGB(
-            255,
-            236,
-            236,
-            236,
-          ).withValues(alpha: isDark ? 0.25 : 0.65),
-        );
-
-    final halfCount = widget.tabs.length ~/ 2;
-    final hasCenter = widget.extraButton != null && widget.tabs.length >= 2;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final collapsedHorizontalPadding =
+        widget.horizontalPadding + screenWidth * 0.12;
+    final isCollapsed = widget.collapsed && !_isHolding;
 
     return LiquidGlassLayer(
       settings: glassSettings,
-      fake: widget.fake,
       child: LiquidGlassBlendGroup(
         blend: 10,
-        child: Padding(
-          padding: EdgeInsets.only(
-            right: widget.horizontalPadding,
-            left: widget.horizontalPadding,
-            bottom: widget.bottomPadding,
-            top: 8,
-          ),
-          child: Row(
-            spacing: widget.spacing,
-            children: [
-              // Left pill
-              Expanded(
-                child: _buildTabPill(
-                  0,
-                  hasCenter ? halfCount : widget.tabs.length,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(end: isCollapsed ? 1 : 0),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          builder: (context, t, _) {
+            final horizontalPadding = lerpDouble(
+              widget.horizontalPadding,
+              collapsedHorizontalPadding,
+              t,
+            )!;
+            final height = lerpDouble(
+              widget.barHeight,
+              widget.collapsedBarHeight,
+              t,
+            )!;
+            final radius = height / 2;
+
+            return AnimatedScale(
+              scale: _isHolding ? 1.03 : 1.0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutBack,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: horizontalPadding,
+                  right: horizontalPadding,
+                  bottom: widget.bottomPadding,
+                  top: 8,
+                ),
+                child: _TabIndicator(
+                  tabIndex: widget.selectedIndex.clamp(
+                    0,
+                    widget.tabs.length - 1,
+                  ),
+                  tabCount: widget.tabs.length,
+                  onHoldChanged: _handleHoldChanged,
+                  onTabChanged: _selectTab,
+                  background: LiquidGlass.grouped(
+                    clipBehavior: Clip.antiAlias,
+                    shape: LiquidRoundedSuperellipse(borderRadius: radius),
+                    child: DecoratedBox(
+                      decoration: ShapeDecoration(
+                        shape: LiquidRoundedSuperellipse(
+                          borderRadius: radius,
+                          side: BorderSide(
+                            color: AppTheme.textColor.withValues(alpha: 0.045),
+                            width: 0.8,
+                          ),
+                        ),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.68),
+                            Colors.white.withValues(alpha: 0.58),
+                          ],
+                        ),
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    height: height,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        for (var i = 0; i < widget.tabs.length; i++)
+                          Expanded(
+                            child: _BottomBarTab(
+                              tab: widget.tabs[i],
+                              selected: widget.selectedIndex == i,
+                              labelProgress: 1 - t,
+                              onTap: () => _selectTab(i),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              // Center camera button
-              if (hasCenter)
-                _ExtraButton(config: widget.extraButton!, fake: widget.fake),
-              // Right pill (only when center button present)
-              if (hasCenter)
-                Expanded(child: _buildTabPill(halfCount, widget.tabs.length)),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -213,139 +197,106 @@ class _BottomBarTab extends StatelessWidget {
     required this.tab,
     required this.selected,
     required this.onTap,
+    this.labelProgress = 1,
   });
 
   final LiquidGlassBottomBarTab tab;
   final bool selected;
   final VoidCallback onTap;
 
+  /// 1 = label fully visible, 0 = label hidden (collapsed bar).
+  final double labelProgress;
+
   @override
   Widget build(BuildContext context) {
-    final theme = CupertinoTheme.of(context);
-    final iconColor = selected
-        ? theme.primaryColor
-        : theme.textTheme.textStyle.color;
+    const glow = AppTheme.primaryColor;
+    final unselectedColor = Color.lerp(
+      AppTheme.subTextColor,
+      AppTheme.textColor,
+      0.32,
+    )!;
+    final itemColor = selected ? Colors.white : unselectedColor;
+    final iconSize = lerpDouble(22, 24, labelProgress)!;
 
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Semantics(
         button: true,
+        selected: selected,
         label: tab.label,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ExcludeSemantics(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    if (tab.glowColor != null)
-                      Positioned(
-                        top: -24,
-                        right: -24,
-                        left: -24,
-                        bottom: -24,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          transformAlignment: Alignment.center,
-                          curve: Curves.easeOutCirc,
-                          transform: selected
-                              ? Matrix4.identity()
-                              : (Matrix4.identity()
-                                  ..scale(0.4)
-                                  ..rotateZ(-math.pi)),
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 300),
-                            opacity: selected ? 1 : 0,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: tab.glowColor!.withOpacity(
-                                      selected ? 0.6 : 0,
-                                    ),
-                                    blurRadius: 32,
-                                    spreadRadius: 8,
-                                  ),
-                                ],
-                              ),
-                            ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ExcludeSemantics(
+              child: AnimatedScale(
+                scale: selected ? 1.08 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutBack,
+                child: Icon(
+                  selected ? (tab.selectedIcon ?? tab.icon) : tab.icon,
+                  color: itemColor,
+                  size: iconSize,
+                  shadows: selected
+                      ? [
+                          Shadow(
+                            color: glow.withValues(alpha: 0.90),
+                            blurRadius: 10,
                           ),
-                        ),
-                      ),
-                    AnimatedScale(
-                      scale: 1,
-                      duration: const Duration(milliseconds: 150),
-                      child: Icon(
-                        selected ? (tab.selectedIcon ?? tab.icon) : tab.icon,
-                        color: iconColor,
-                        size: 24,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                tab.label,
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: iconColor,
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ExtraButton extends StatefulWidget {
-  const _ExtraButton({required this.config, this.fake = false});
-
-  final LiquidGlassBottomBarExtraButton config;
-  final bool fake;
-
-  @override
-  State<_ExtraButton> createState() => _ExtraButtonState();
-}
-
-class _ExtraButtonState extends State<_ExtraButton> {
-  @override
-  Widget build(BuildContext context) {
-    final theme = CupertinoTheme.of(context);
-    return GestureDetector(
-      onTap: widget.config.onTap,
-      child: LiquidStretch(
-        child: Semantics(
-          button: true,
-          label: widget.config.label,
-          child: LiquidGlass.grouped(
-            shape: const LiquidOval(),
-            child: GlassGlow(
-              child: SizedBox(
-                height: widget.config.size,
-                width: widget.config.size,
-                child: Center(
-                  child: Icon(
-                    widget.config.icon,
-                    size: 24,
-                    color: theme.textTheme.textStyle.color,
-                  ),
+                          Shadow(
+                            color: AppTheme.primaryLightColor.withValues(
+                              alpha: 0.65,
+                            ),
+                            blurRadius: 18,
+                          ),
+                        ]
+                      : null,
                 ),
               ),
             ),
-          ),
+            if (labelProgress > 0)
+              ClipRect(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  heightFactor: labelProgress,
+                  child: Opacity(
+                    opacity: labelProgress,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: ExcludeSemantics(
+                        child: Text(
+                          tab.label,
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: itemColor,
+                            fontSize: 11,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                            shadows: selected
+                                ? [
+                                    Shadow(
+                                      color: glow.withValues(alpha: 0.90),
+                                      blurRadius: 8,
+                                    ),
+                                    Shadow(
+                                      color: glow.withValues(alpha: 0.55),
+                                      blurRadius: 14,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -355,47 +306,44 @@ class _ExtraButtonState extends State<_ExtraButton> {
 class _TabIndicator extends StatefulWidget {
   const _TabIndicator({
     required this.child,
+    required this.background,
     required this.tabIndex,
     required this.tabCount,
     required this.onTabChanged,
-    this.visible = true,
-    this.indicatorColor,
-    this.fake = false,
+    this.onHoldChanged,
   });
 
   final int tabIndex;
   final int tabCount;
-  final bool visible;
   final Widget child;
-  final Color? indicatorColor;
+  final Widget background;
   final ValueChanged<int> onTabChanged;
-  final bool fake;
+  final ValueChanged<bool>? onHoldChanged;
 
   @override
   State<_TabIndicator> createState() => _TabIndicatorState();
 }
 
-class _TabIndicatorState extends State<_TabIndicator>
-    with SingleTickerProviderStateMixin {
+class _TabIndicatorState extends State<_TabIndicator> {
   bool _isDown = false;
   bool _isDragging = false;
 
-  late double xAlign = computeXAlignmentForTab(widget.tabIndex);
+  late double xAlign = _computeXAlignmentForTab(widget.tabIndex);
 
-  double computeXAlignmentForTab(int tabIndex) {
+  double _computeXAlignmentForTab(int tabIndex) {
     final relativeTabIndex = (tabIndex / (widget.tabCount - 1)).clamp(0.0, 1.0);
     return (relativeTabIndex * 2) - 1;
   }
 
   @override
   void didUpdateWidget(covariant _TabIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
     if (oldWidget.tabIndex != widget.tabIndex ||
         oldWidget.tabCount != widget.tabCount) {
       setState(() {
-        xAlign = computeXAlignmentForTab(widget.tabIndex);
+        xAlign = _computeXAlignmentForTab(widget.tabIndex);
       });
     }
-    super.didUpdateWidget(oldWidget);
   }
 
   double _getAlignmentFromGlobalPosition(Offset globalPosition) {
@@ -412,38 +360,35 @@ class _TabIndicatorState extends State<_TabIndicator>
     return (adjustedRelativeX * 2) - 1;
   }
 
-  void _onDragDown(DragDownDetails details) {
-    setState(() {
-      _isDown = true;
-      xAlign = _getAlignmentFromGlobalPosition(details.globalPosition);
-    });
-  }
-
-  void _onDragUpdate(DragUpdateDetails details) {
-    setState(() {
-      _isDragging = true;
-      xAlign = _getAlignmentFromGlobalPosition(details.globalPosition);
-    });
-  }
-
   double _applyRubberBandResistance(double value) {
     const double resistance = 0.4;
     const double maxOverdrag = 0.3;
 
     if (value < 0) {
-      final overdrag = -value;
-      final resistedOverdrag = overdrag * resistance;
-      return -resistedOverdrag.clamp(0.0, maxOverdrag);
+      return -((-value) * resistance).clamp(0.0, maxOverdrag);
     } else if (value > 1) {
-      final overdrag = value - 1;
-      final resistedOverdrag = overdrag * resistance;
-      return 1 + resistedOverdrag.clamp(0.0, maxOverdrag);
-    } else {
-      return value;
+      return 1 + ((value - 1) * resistance).clamp(0.0, maxOverdrag);
     }
+    return value;
   }
 
-  void _onDragEnd(DragEndDetails details) {
+  void _startHoldAt(Offset globalPosition) {
+    widget.onHoldChanged?.call(true);
+    setState(() {
+      _isDown = true;
+      xAlign = _getAlignmentFromGlobalPosition(globalPosition);
+    });
+  }
+
+  void _updateHoldAt(Offset globalPosition) {
+    setState(() {
+      _isDragging = true;
+      xAlign = _getAlignmentFromGlobalPosition(globalPosition);
+    });
+  }
+
+  void _finishHold({Velocity velocity = Velocity.zero}) {
+    widget.onHoldChanged?.call(false);
     setState(() {
       _isDragging = false;
       _isDown = false;
@@ -452,11 +397,9 @@ class _TabIndicatorState extends State<_TabIndicator>
     final box = context.findRenderObject() as RenderBox;
     final currentRelativeX = (xAlign + 1) / 2;
     final tabWidth = 1.0 / widget.tabCount;
-
-    final indicatorWidth = 1.0 / widget.tabCount;
-    final draggableRange = 1.0 - indicatorWidth;
+    final draggableRange = 1.0 - tabWidth;
     final velocityX =
-        (details.velocity.pixelsPerSecond.dx / box.size.width) / draggableRange;
+        (velocity.pixelsPerSecond.dx / box.size.width) / draggableRange;
 
     int targetTabIndex;
 
@@ -494,69 +437,93 @@ class _TabIndicatorState extends State<_TabIndicator>
       }
     }
 
-    xAlign = computeXAlignmentForTab(targetTabIndex);
+    xAlign = _computeXAlignmentForTab(targetTabIndex);
 
     if (targetTabIndex != widget.tabIndex) {
       widget.onTabChanged(targetTabIndex);
     }
   }
 
+  void _cancelHold() {
+    widget.onHoldChanged?.call(false);
+    setState(() {
+      _isDragging = false;
+      _isDown = false;
+      xAlign = _computeXAlignmentForTab(widget.tabIndex);
+    });
+  }
+
+  /// Soft, diffused glowing lens behind the selected icon + label.
+  Widget _buildGlowIndicator() {
+    const glow = AppTheme.primaryColor;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(64),
+        gradient: RadialGradient(
+          radius: 0.72,
+          colors: [
+            glow.withValues(alpha: 0.52),
+            AppTheme.primaryLightColor.withValues(alpha: 0.24),
+            glow.withValues(alpha: 0.0),
+          ],
+          stops: const [0.0, 0.58, 1.0],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: glow.withValues(alpha: 0.20),
+            blurRadius: 16,
+            spreadRadius: -4,
+          ),
+        ],
+      ),
+      child: const SizedBox.expand(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = CupertinoTheme.of(context);
-    final indicatorColor =
-        widget.indicatorColor ??
-        theme.textTheme.textStyle.color?.withValues(alpha: .1);
-    final targetAlignment = computeXAlignmentForTab(widget.tabIndex);
+    final targetAlignment = _computeXAlignmentForTab(widget.tabIndex);
 
     return GestureDetector(
-      onHorizontalDragDown: _onDragDown,
-      onHorizontalDragUpdate: _onDragUpdate,
-      onHorizontalDragEnd: _onDragEnd,
-      onHorizontalDragCancel: () => setState(() {
-        _isDragging = false;
-        _isDown = false;
-      }),
+      behavior: HitTestBehavior.opaque,
+      onLongPressStart: (d) => _startHoldAt(d.globalPosition),
+      onLongPressMoveUpdate: (d) => _updateHoldAt(d.globalPosition),
+      onLongPressEnd: (_) => _finishHold(),
+      onLongPressCancel: _cancelHold,
+      onHorizontalDragStart: (d) => _startHoldAt(d.globalPosition),
+      onHorizontalDragUpdate: (d) => _updateHoldAt(d.globalPosition),
+      onHorizontalDragEnd: (d) => _finishHold(velocity: d.velocity),
+      onHorizontalDragCancel: _cancelHold,
       child: VelocityMotionBuilder(
         converter: SingleMotionConverter(),
         value: xAlign,
         motion: _isDragging
             ? const Motion.interactiveSpring(snapToEnd: true)
             : const Motion.bouncySpring(snapToEnd: true),
-        builder: (context, value, velocity, child) {
+        builder: (context, value, velocity, _) {
           final alignment = Alignment(value, 0);
           return SingleMotionBuilder(
             motion: const Motion.snappySpring(
               snapToEnd: true,
               duration: Duration(milliseconds: 300),
             ),
-            value:
-                widget.visible &&
-                    (_isDown || (alignment.x - targetAlignment).abs() > 0.30)
+            value: _isDown || (alignment.x - targetAlignment).abs() > 0.30
                 ? 1.0
                 : 0.0,
             builder: (context, thickness, child) {
               return Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  if (thickness < 1)
-                    _IndicatorTransform(
-                      velocity: velocity,
-                      tabCount: widget.tabCount,
-                      alignment: alignment,
-                      thickness: thickness,
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 120),
-                        opacity: widget.visible && thickness <= .2 ? 1 : 0,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: indicatorColor,
-                            borderRadius: BorderRadius.circular(64),
-                          ),
-                          child: const SizedBox.expand(),
-                        ),
-                      ),
+                  Positioned.fill(child: widget.background),
+                  _IndicatorTransform(
+                    velocity: velocity,
+                    tabCount: widget.tabCount,
+                    alignment: alignment,
+                    thickness: thickness,
+                    child: IgnorePointer(
+                      child: _buildGlowIndicator(),
                     ),
+                  ),
                   child!,
                   if (thickness > 0)
                     _IndicatorTransform(
@@ -564,27 +531,25 @@ class _TabIndicatorState extends State<_TabIndicator>
                       tabCount: widget.tabCount,
                       alignment: alignment,
                       thickness: thickness,
-                      child: LiquidGlass.withOwnLayer(
-                        fake: widget.fake,
-                        settings: LiquidGlassSettings(
-                          visibility: thickness,
-                          glassColor: const Color.from(
-                            alpha: .1,
-                            red: 1,
-                            green: 1,
-                            blue: 1,
+                      child: IgnorePointer(
+                        child: LiquidGlass.withOwnLayer(
+                          settings: LiquidGlassSettings(
+                            visibility: thickness,
+                            glassColor: AppTheme.primaryColor.withValues(
+                              alpha: .14,
+                            ),
+                            saturation: 1.5,
+                            refractiveIndex: 1.15,
+                            thickness: 20,
+                            lightIntensity: 2,
+                            chromaticAberration: .5,
+                            blur: 0,
                           ),
-                          saturation: 1.5,
-                          refractiveIndex: 1.15,
-                          thickness: 20,
-                          lightIntensity: 2,
-                          chromaticAberration: .5,
-                          blur: 0,
+                          shape: const LiquidRoundedSuperellipse(
+                            borderRadius: 64,
+                          ),
+                          child: const GlassGlow(child: SizedBox.expand()),
                         ),
-                        shape: const LiquidRoundedSuperellipse(
-                          borderRadius: 64,
-                        ),
-                        child: GlassGlow(child: const SizedBox.expand()),
                       ),
                     ),
                 ],
@@ -593,7 +558,6 @@ class _TabIndicatorState extends State<_TabIndicator>
             child: widget.child,
           );
         },
-        child: widget.child,
       ),
     );
   }
@@ -620,7 +584,7 @@ class _IndicatorTransform extends StatelessWidget {
       RelativeRect.fill,
       const RelativeRect.fromLTRB(-14, -14, -14, -14),
       thickness,
-    );
+    )!;
     return Positioned.fill(
       left: 4,
       right: 4,
@@ -633,20 +597,16 @@ class _IndicatorTransform extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Positioned.fromRelativeRect(
-              rect: rect!,
+              rect: rect,
               child: SingleMotionBuilder(
-                motion: Motion.bouncySpring(
-                  duration: const Duration(milliseconds: 600),
+                motion: const Motion.bouncySpring(
+                  duration: Duration(milliseconds: 600),
                 ),
                 value: velocity,
                 builder: (context, velocity, child) {
                   return Transform(
                     alignment: Alignment.center,
-                    transform: _buildJellyTransform(
-                      velocity: Offset(velocity, 0),
-                      maxDistortion: .8,
-                      velocityScale: 10,
-                    ),
+                    transform: _buildJellyTransform(velocity),
                     child: child,
                   );
                 },
