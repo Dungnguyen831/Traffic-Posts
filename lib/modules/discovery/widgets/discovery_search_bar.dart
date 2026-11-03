@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
@@ -139,6 +140,10 @@ class DiscoverySearchBar extends StatelessWidget {
                   prefixIcon: IconlyBroken.search,
                   controller: controller.searchController,
                   textInputAction: TextInputAction.search,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                  ],
                   onSubmitted: (_) => controller.searchFines(),
                   height: 50.h,
                 ),

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 
 import '../../../data/mock/mock_fines_data.dart';
 import '../../../data/models/fine_record_model.dart';
 import '../../../data/repositories/fine_repository.dart';
+import '../../../theme/app_theme.dart';
 
 class DiscoveryController extends GetxController {
   final FineRepository _repository = FineRepository();
@@ -28,8 +30,37 @@ class DiscoveryController extends GetxController {
   }
 
   Future<void> searchFines({bool forceRefresh = false}) async {
-    final plate = searchController.text.trim();
-    if (plate.isEmpty) return;
+    final plate = searchController.text.trim().toUpperCase();
+    if (plate.isEmpty) {
+      Get.snackbar(
+        'error_title'.tr,
+        'violation_sub_plate_empty'.tr,
+        backgroundColor: AppTheme.errorColor,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+        margin: EdgeInsets.all(16.r),
+        borderRadius: 12.r,
+      );
+      return;
+    }
+
+    // Biển số hợp lệ chỉ gồm chữ và số thông thường
+    if (!RegExp(r'^[A-Z0-9]{4,12}$').hasMatch(plate)) {
+      Get.snackbar(
+        'error_title'.tr,
+        'violation_sub_plate_invalid'.tr,
+        backgroundColor: AppTheme.errorColor,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+        margin: EdgeInsets.all(16.r),
+        borderRadius: 12.r,
+      );
+      return;
+    }
+
+    if (searchController.text != plate) {
+      searchController.text = plate;
+    }
 
     // Ngăn chặn bấm liên tục nhiều lần gây giật lag
     if (isLoading.value) return;
