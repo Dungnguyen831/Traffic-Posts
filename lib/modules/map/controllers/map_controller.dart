@@ -23,6 +23,7 @@ import '../widgets/user_location_marker.dart';
 import '../../dashboard/controllers/dashboard_controller.dart';
 import '../../emergency/controllers/emergency_controller.dart';
 import '../../emergency/views/sos_active_screen.dart';
+import '../../../utils/hashtag_helper.dart';
 import '../../home/controllers/home_controller.dart';
 
 /// Các kiểu bản đồ hỗ trợ chuyển đổi (Mặc định & Vệ tinh)
@@ -766,14 +767,14 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     TrafficPostModel post,
   ) {
     final matchingTags = (post.hashtags ?? [])
-        .map((t) => t.toLowerCase().replaceAll('#', '').trim())
+        .map(HashtagHelper.toCanonical)
         .where((t) => kMapHashtags.contains(t))
         .toList();
     final firstTag = matchingTags.isNotEmpty ? matchingTags.first : '';
     final displayTag = firstTag.isNotEmpty
-        ? '#$firstTag'
+        ? HashtagHelper.format(firstTag)
         : ((post.hashtags?.isNotEmpty ?? false)
-            ? '#${post.hashtags!.first.replaceAll('#', '')}'
+            ? HashtagHelper.format(post.hashtags!.first)
             : (post.type != null && post.type!.isNotEmpty
                 ? '#${post.type}'
                 : ''));

@@ -6,6 +6,7 @@ import '../../../data/models/traffic_post_model.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/primary_button.dart';
 import '../../dashboard/widgets/post_item.dart';
+import '../../../utils/hashtag_helper.dart';
 
 class _PostSheetEntry {
   final Rx<TrafficPostModel> postRx;
@@ -50,7 +51,7 @@ class PostBottomSheet {
 
     String tagLabelForPost(TrafficPostModel p, int index) {
       if (p.hashtags != null && p.hashtags!.isNotEmpty) {
-        return '#${p.hashtags!.first.replaceAll('#', '')}';
+        return HashtagHelper.format(p.hashtags!.first);
       }
       if (p.type != null && p.type!.isNotEmpty) {
         return '#${p.type}';
