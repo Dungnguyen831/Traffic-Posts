@@ -9,6 +9,7 @@ import '../../../data/models/traffic_post_model.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/app_button.dart';
 import '../../../widgets/custom_alert.dart';
+import '../../../utils/hashtag_helper.dart';
 
 class EditPostBottomSheet extends StatefulWidget {
   final TrafficPostModel post;
@@ -261,7 +262,7 @@ class _EditPostBottomSheetState extends State<EditPostBottomSheet> {
                               ),
                             ),
                             child: Text(
-                              '#$cleanTag',
+                              HashtagHelper.format(cleanTag),
                               style: TextStyle(
                                 fontSize: 12.sp,
                                 fontWeight: FontWeight.w600,

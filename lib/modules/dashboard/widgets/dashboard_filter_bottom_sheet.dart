@@ -6,6 +6,7 @@ import 'package:iconly/iconly.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/primary_button.dart';
 import '../controllers/dashboard_controller.dart';
+import '../../../utils/hashtag_helper.dart';
 
 class DashboardFilterBottomSheet extends StatefulWidget {
   const DashboardFilterBottomSheet({super.key});
@@ -257,7 +258,7 @@ class _DashboardFilterBottomSheetState
                   final labelKey = opt['labelKey']!;
                   final isSelected = _hashtag == tag;
                   return _buildChoiceChip(
-                    label: tag == null ? labelKey.tr : '${labelKey.tr} (#$tag)',
+                    label: tag == null ? labelKey.tr : '${labelKey.tr} (${HashtagHelper.format(tag)})',
                     selected: isSelected,
                     onTap: () => setState(() => _hashtag = tag),
                   );

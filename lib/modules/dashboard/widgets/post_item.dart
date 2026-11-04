@@ -12,6 +12,7 @@ import '../../../widgets/full_screen_image_viewer.dart';
 import '../../../widgets/loading_widget.dart';
 import '../../../widgets/reputation_badge.dart';
 import '../../profile/views/user_profile_screen.dart';
+import '../../../utils/hashtag_helper.dart';
 import 'like_icon.dart';
 
 class PostItem extends StatefulWidget {
@@ -798,9 +799,11 @@ class _PostItemState extends State<PostItem>
                       if (post.hashtags != null && post.hashtags!.isNotEmpty)
                         ...post.hashtags!.map((tag) {
                           final cleanTag = tag.replaceAll('#', '').trim();
+                          final canonicalTag = HashtagHelper.toCanonical(cleanTag);
                           final isSelectedTag = widget.activeHashtag != null &&
                               widget.activeHashtag!.toLowerCase() ==
-                                  cleanTag.toLowerCase();
+                                  canonicalTag;
+                          final displayTag = HashtagHelper.format(cleanTag);
                           final tagStyle = TextStyle(
                             fontSize: 16.sp,
                             height: 1.4,
@@ -816,7 +819,7 @@ class _PostItemState extends State<PostItem>
                           );
                           if (widget.onTapHashtag == null) {
                             return TextSpan(
-                              text: '#$cleanTag ',
+                              text: '$displayTag ',
                               style: tagStyle,
                             );
                           }
@@ -824,9 +827,9 @@ class _PostItemState extends State<PostItem>
                             alignment: PlaceholderAlignment.baseline,
                             baseline: TextBaseline.alphabetic,
                             child: GestureDetector(
-                              onTap: () => widget.onTapHashtag!(cleanTag),
+                              onTap: () => widget.onTapHashtag!(canonicalTag),
                               child: Text(
-                                '#$cleanTag ',
+                                '$displayTag ',
                                 style: tagStyle,
                               ),
                             ),

@@ -23,6 +23,7 @@ import '../widgets/dashboard_filter_bottom_sheet.dart';
 import '../widgets/edit_post_bottom_sheet.dart';
 import '../widgets/report_bottom_sheet.dart';
 import '../widgets/voice_search_bottom_sheet.dart';
+import '../../../utils/hashtag_helper.dart';
 
 /// Các tùy chọn sắp xếp bài viết trên Trang chủ
 enum PostSortOption { newest, nearest, mostLiked, reputation }
@@ -396,21 +397,18 @@ class DashboardController extends GetxController {
           kw,
         );
         final userMatch = (p.userName ?? '').toLowerCase().contains(kw);
-        final tagMatch = (p.hashtags ?? []).any(
-          (t) => t.toLowerCase().contains(kw),
-        );
+        final tagMatch = HashtagHelper.matchesKeyword(p.hashtags, kw);
         return contentMatch || addressMatch || userMatch || tagMatch;
       });
     }
 
     // 2. Lọc theo Hashtag / Loại sự cố
-    final activeTag = selectedHashtag.value?.toLowerCase();
+    final activeTag = selectedHashtag.value;
     if (activeTag != null && activeTag.isNotEmpty) {
+      final canonicalActive = HashtagHelper.toCanonical(activeTag);
       result = result.where((p) {
-        final tags = (p.hashtags ?? []).map(
-          (t) => t.toLowerCase().replaceAll('#', ''),
-        );
-        return tags.contains(activeTag);
+        final tags = (p.hashtags ?? []).map(HashtagHelper.toCanonical);
+        return tags.contains(canonicalActive);
       });
     }
 
@@ -545,7 +543,7 @@ class DashboardController extends GetxController {
 
   /// Bật / tắt lọc nhanh theo Hashtag
   Future<void> toggleHashtagFilter(String rawTag) async {
-    final cleanTag = rawTag.replaceAll('#', '').trim().toLowerCase();
+    final cleanTag = HashtagHelper.toCanonical(rawTag);
     if (cleanTag.isEmpty) return;
 
     if (selectedHashtag.value == cleanTag) {

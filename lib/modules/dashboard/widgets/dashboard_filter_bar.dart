@@ -6,6 +6,7 @@ import 'package:iconly/iconly.dart';
 
 import '../../../theme/app_theme.dart';
 import '../controllers/dashboard_controller.dart';
+import '../../../utils/hashtag_helper.dart';
 
 class DashboardFilterBar extends StatelessWidget {
   const DashboardFilterBar({super.key});
@@ -101,7 +102,7 @@ class DashboardFilterBar extends StatelessWidget {
             // 4. Nếu người dùng bấm vào 1 hashtag tùy chỉnh trên bài viết, hiển thị chip đó
             if (isCustomTag) ...[
               _QuickFilterChip(
-                label: '#$activeTag',
+                label: HashtagHelper.format(activeTag),
                 isSelected: true,
                 onTap: () {
                   HapticFeedback.selectionClick();
