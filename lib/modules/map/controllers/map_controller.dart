@@ -17,6 +17,8 @@ import '../../../data/repositories/traffic_post_repository.dart';
 import '../../../data/services/sos_stream_service.dart';
 import '../../../data/services/traffic_post_socket_service.dart';
 import '../../../services/storage_service.dart';
+import '../../../theme/app_theme.dart';
+import '../widgets/map_marker_widgets.dart';
 import '../widgets/post_bottom_sheet.dart';
 import '../widgets/sos_bottom_sheet.dart';
 import '../widgets/user_location_marker.dart';
@@ -27,10 +29,7 @@ import '../../../utils/hashtag_helper.dart';
 import '../../home/controllers/home_controller.dart';
 
 /// Các kiểu bản đồ hỗ trợ chuyển đổi (Mặc định & Vệ tinh)
-enum AppMapType {
-  normal,
-  satellite,
-}
+enum AppMapType { normal, satellite }
 
 /// Hashtags được đánh dấu trên bản đồ – đồng bộ với CameraController
 const List<String> kMapHashtags = [
@@ -47,10 +46,7 @@ class _PostCluster {
   final List<TrafficPostModel> posts;
   final LatLng center;
 
-  _PostCluster({
-    required this.posts,
-    required this.center,
-  });
+  _PostCluster({required this.posts, required this.center});
 
   TrafficPostModel get primaryPost => posts.first;
 
@@ -70,6 +66,23 @@ class _PostCluster {
     if (count == 0) return center;
     return LatLng(sumLat / count, sumLng / count);
   }
+}
+
+/// DTO đệm thông tin tag & độ ưu tiên được tính toán sẵn cho từng bài viết
+class _PostTagInfo {
+  final String firstTag;
+  final String displayTag;
+  final Color tagColor;
+  final IconData icon;
+  final int priority;
+
+  const _PostTagInfo({
+    required this.firstTag,
+    required this.displayTag,
+    required this.tagColor,
+    required this.icon,
+    required this.priority,
+  });
 }
 
 class MapController extends GetxController with GetTickerProviderStateMixin {
@@ -97,11 +110,11 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   final Map<String, TrafficPostModel> _bufferedPosts = {};
   bool _initialLoadCompleted = false;
 
+  // Cache thông tin tag & độ ưu tiên của bài viết để tối ưu hóa hiệu năng gom cụm O(1)
+  final Map<String, _PostTagInfo> _tagInfoCache = {};
+
   // Tọa độ dự phòng (Hà Nội) chỉ dùng khi chưa lấy được GPS của người dùng
-  final LatLng _fallbackCenter = const LatLng(
-    21.028511,
-    105.804817,
-  );
+  final LatLng _fallbackCenter = const LatLng(21.028511, 105.804817);
   LatLng get center {
     if (userLocation.value != null) {
       return userLocation.value!;
@@ -131,19 +144,30 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   fm.Marker? _searchResultMarker;
   fm.Marker? _userLocationMarker;
   StreamSubscription<Position>? _positionStreamSub;
+  final List<Worker> _workers = [];
+
   bool _isMapEngineReady = false;
   bool _hasCenteredOnUserInitially = false;
   bool _hasCustomCameraFocus = false;
   bool _isInitLocationRunning = false;
+  bool _isProgrammaticCameraMoving = false;
   double _lastClusteredZoom = 14.0;
+  Timer? _reclusterDebounceTimer;
   static const Distance _geoDistance = Distance();
+
+  // Biến ghi nhớ trạng thái SOS để tránh rebuild marker SOS trùng lặp
+  double _lastSosLat = 0;
+  double _lastSosLng = 0;
+  String _lastSosId = '';
+  bool _lastSosActive = false;
+  int _lastSosListCount = -1;
 
   double get _safeCurrentZoom {
     try {
-      return mapEngineController.camera.zoom;
-    } catch (_) {
-      return _lastClusteredZoom;
-    }
+      final z = mapEngineController.camera.zoom;
+      if (z.isFinite && z > 0) return z;
+    } catch (_) {}
+    return _lastClusteredZoom;
   }
 
   /// Đồng bộ các lớp marker theo đúng thứ tự ưu tiên hiển thị (SOS luôn nằm trên cùng)
@@ -156,7 +180,17 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     ]);
   }
 
-  /// Cập nhật tọa độ và tạo lại marker chấm xanh vị trí hiện tại của người dùng
+  /// Danh sách bài viết được lọc theo mức độ zoom được chỉ định (LOD Filter)
+  List<TrafficPostModel> _getVisiblePosts(double zoom) {
+    if (zoom < 14.0) {
+      return taggedPosts
+          .where((p) => p.location != null && _priorityForPost(p) >= 40)
+          .toList();
+    }
+    return taggedPosts.where((p) => p.location != null).toList();
+  }
+
+  /// Cập nhật tọa độ và tạo lại marker chấm xanh vị trí hiện tại của người dùng (giữ nguyên zoom)
   void _updateUserLocationMarker(LatLng point) {
     userLocation.value = point;
     _userLocationMarker = fm.Marker(
@@ -167,8 +201,9 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       alignment: Alignment.center,
       rotate: true,
       child: UserLocationMarkerWidget(
+        key: const ValueKey('user_location_marker_widget'),
         size: 56,
-        onTap: () => animatedMapMove(point, 16.0),
+        onTap: () => animatedMapMove(point, _safeCurrentZoom),
       ),
     );
     _syncCombinedMarkers();
@@ -177,26 +212,27 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   /// Lắng nghe luồng thay đổi vị trí khi người dùng di chuyển (>= 10m)
   void _startLocationStream() {
     if (_positionStreamSub != null) return;
-    _positionStreamSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
-      ),
-    ).listen(
-      (Position pos) {
-        final point = LatLng(pos.latitude, pos.longitude);
-        _updateUserLocationMarker(point);
-        if (_isMapEngineReady &&
-            !_hasCenteredOnUserInitially &&
-            !_hasCustomCameraFocus) {
-          _hasCenteredOnUserInitially = true;
-          moveToLocation(point, zoom: 15.5);
-        }
-      },
-      onError: (e) {
-        debugPrint('MapController position stream error: $e');
-      },
-    );
+    _positionStreamSub =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 10,
+          ),
+        ).listen(
+          (Position pos) {
+            final point = LatLng(pos.latitude, pos.longitude);
+            _updateUserLocationMarker(point);
+            if (_isMapEngineReady &&
+                !_hasCenteredOnUserInitially &&
+                !_hasCustomCameraFocus) {
+              _hasCenteredOnUserInitially = true;
+              moveToLocation(point, zoom: 15.5);
+            }
+          },
+          onError: (e) {
+            debugPrint('MapController position stream error: $e');
+          },
+        );
   }
 
   /// Tự động định vị vị trí người dùng khi mở app hoặc mở bản đồ lần đầu
@@ -208,7 +244,8 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
     try {
       // 1. Nếu DashboardController đã lấy sẵn tọa độ hợp lệ, tận dụng ngay để hiển thị tức thì
-      if (userLocation.value == null && Get.isRegistered<DashboardController>()) {
+      if (userLocation.value == null &&
+          Get.isRegistered<DashboardController>()) {
         final dash = Get.find<DashboardController>();
         final lat = dash.userLat.value;
         final lng = dash.userLng.value;
@@ -274,7 +311,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
             freshPoint,
           );
           if (driftMeters > 15.0) {
-            animatedMapMove(freshPoint, 15.5);
+            animatedMapMove(freshPoint, _safeCurrentZoom);
           }
         }
       }
@@ -285,23 +322,21 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     }
   }
 
-  /// URL template tương ứng cho TileLayer dựa vào MapType hiện tại (Mặc định & Vệ tinh)
+  String get _mapTilerKey => (dotenv.env['MAPTILER_API_KEY'] ?? '').trim();
+  bool get hasMapTilerKey => _mapTilerKey.isNotEmpty;
+
+  /// URL template tương ứng cho TileLayer dựa vào MapType hiện tại:
+  /// - Nếu có MAPTILER_API_KEY trong .env: Dùng MapTiler Streets 256px @2x (chữ tên đường & địa điểm to gấp đôi và sắc nét).
+  /// - Mặc định (Không cần API key): Dùng OSM Humanitarian Pastel.
   String get currentTileUrl {
     switch (currentMapType.value) {
       case AppMapType.satellite:
         return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
       case AppMapType.normal:
-        return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-    }
-  }
-
-  /// URL dự phòng khi OpenStreetMap domain chính bị lỗi mạng hoặc bị DNS nhà mạng chặn
-  String? get fallbackTileUrl {
-    switch (currentMapType.value) {
-      case AppMapType.normal:
-        return 'https://tile.openstreetmap.de/{z}/{x}/{y}.png';
-      default:
-        return null;
+        if (hasMapTilerKey) {
+          return 'https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}@2x.png?key=$_mapTilerKey';
+        }
+        return 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png';
     }
   }
 
@@ -310,10 +345,12 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     super.onInit();
     _initMapPostsAndSocket();
 
-    // Lắng nghe danh sách SOS theo thời gian thực
-    ever(SosStreamService.to.sosList, (_) {
-      _buildSosMarkers();
-    });
+    // Lắng nghe danh sách SOS theo thời gian thực (lưu Worker để dọn dẹp khi dispose)
+    _workers.add(
+      ever(SosStreamService.to.sosList, (_) {
+        _buildSosMarkers();
+      }),
+    );
 
     if (SosStreamService.to.sosList.isNotEmpty) {
       _buildSosMarkers();
@@ -322,26 +359,30 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     // Lắng nghe trạng thái SOS của chính mình từ EmergencyController
     if (Get.isRegistered<EmergencyController>()) {
       final emergencyCtrl = Get.find<EmergencyController>();
-      ever(emergencyCtrl.isSosActive, (isActive) {
-        _buildSosMarkers();
-        if (isActive == true) {
-          centerOnActiveSos(
-            isOffsetForSheet: !emergencyCtrl.isSheetMinimized.value,
-            zoom: 16.0,
-            animated: true,
-          );
-        }
-      });
-      ever(emergencyCtrl.activeSosId, (_) => _buildSosMarkers());
-      ever(emergencyCtrl.activeSosLat, (_) => _buildSosMarkers());
-      ever(emergencyCtrl.activeSosLng, (_) => _buildSosMarkers());
+      _workers.add(
+        ever(emergencyCtrl.isSosActive, (isActive) {
+          _buildSosMarkers();
+          if (isActive == true) {
+            centerOnActiveSos(
+              isOffsetForSheet: !emergencyCtrl.isSheetMinimized.value,
+              zoom: 16.0,
+              animated: true,
+            );
+          }
+        }),
+      );
+      _workers.add(ever(emergencyCtrl.activeSosId, (_) => _buildSosMarkers()));
+      _workers.add(ever(emergencyCtrl.activeSosLat, (_) => _buildSosMarkers()));
+      _workers.add(ever(emergencyCtrl.activeSosLng, (_) => _buildSosMarkers()));
 
       // Khi người dùng vuốt lên hoặc xuống: tự động căn chỉnh tọa độ focus vào chính giữa phần hiển thị với hiệu ứng lướt mượt mà
-      ever(emergencyCtrl.isSheetMinimized, (minimized) {
-        if (emergencyCtrl.isSosActive.value) {
-          centerOnActiveSos(isOffsetForSheet: !minimized, animated: true);
-        }
-      });
+      _workers.add(
+        ever(emergencyCtrl.isSheetMinimized, (minimized) {
+          if (emergencyCtrl.isSosActive.value) {
+            centerOnActiveSos(isOffsetForSheet: !minimized, animated: true);
+          }
+        }),
+      );
     }
   }
 
@@ -361,11 +402,22 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     final startCenter = mapEngineController.camera.center;
     final startZoom = mapEngineController.camera.zoom;
 
-    final latTween = Tween<double>(begin: startCenter.latitude, end: destLocation.latitude);
-    final lngTween = Tween<double>(begin: startCenter.longitude, end: destLocation.longitude);
+    final latTween = Tween<double>(
+      begin: startCenter.latitude,
+      end: destLocation.latitude,
+    );
+    final lngTween = Tween<double>(
+      begin: startCenter.longitude,
+      end: destLocation.longitude,
+    );
     final zoomTween = Tween<double>(begin: startZoom, end: destZoom);
 
-    final animation = CurvedAnimation(parent: _cameraAnimationController!, curve: curve);
+    final animation = CurvedAnimation(
+      parent: _cameraAnimationController!,
+      curve: curve,
+    );
+
+    _isProgrammaticCameraMoving = true;
 
     _cameraAnimationController!.addListener(() {
       try {
@@ -382,6 +434,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     _cameraAnimationController!.addStatusListener((status) {
       if (status == AnimationStatus.completed ||
           status == AnimationStatus.dismissed) {
+        _isProgrammaticCameraMoving = false;
         if ((destZoom - _lastClusteredZoom).abs() >= 0.15) {
           _lastClusteredZoom = destZoom;
           _buildPostMarkers(zoom: destZoom);
@@ -405,6 +458,30 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     }
   }
 
+  /// Tính toán tọa độ camera để tâm của điểm [point] nằm chính giữa khoảng trống hiển thị trên bản đồ (phần trên bottom sheet)
+  /// [pixelOffsetY]: Số pixel muốn dời điểm hiển thị lên phía trên so với tâm màn hình (mặc định để tránh che bởi bottom sheet)
+  LatLng calculateCameraTargetForPoint({
+    required LatLng point,
+    required double zoom,
+    double pixelOffsetY = 0.0,
+  }) {
+    if (pixelOffsetY == 0.0) return point;
+
+    try {
+      final crs = mapEngineController.camera.crs;
+      final pointOffset = crs.latLngToOffset(point, zoom);
+      // Dời projected offset theo trục Y xuống dưới (South) để điểm point hiển thị dịch lên trên (North)
+      final shiftedOffset = Offset(pointOffset.dx, pointOffset.dy + pixelOffsetY);
+      return crs.offsetToLatLng(shiftedOffset, zoom);
+    } catch (_) {
+      // Dự phòng bằng công thức Web Mercator chuẩn nếu camera chưa sẵn sàng
+      final rad = point.latitude * math.pi / 180.0;
+      final latOffset =
+          (pixelOffsetY * 360.0 * math.cos(rad)) / (256.0 * math.pow(2.0, zoom));
+      return LatLng(point.latitude - latOffset, point.longitude);
+    }
+  }
+
   /// Căn chỉnh camera focus vào tọa độ SOS:
   /// - isOffsetForSheet = false (khi vuốt xuống): focus vào chính giữa toàn màn hình
   /// - isOffsetForSheet = true (khi vuốt lên): nảy lên trên vào chính giữa khoảng trống bản đồ
@@ -421,11 +498,30 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     if (lat == 0.0 || lng == 0.0) return;
 
     _hasCustomCameraFocus = true;
-    final currentZoom = mapEngineController.camera.zoom;
-    final targetZoom = zoom ?? (currentZoom < 14.5 ? 15.5 : currentZoom);
-    // Khi sheet mở, offset camera xuống phía dưới (lat - 0.0035) để tâm marker nảy lên chính giữa nửa trên bản đồ
-    final targetLat = isOffsetForSheet ? (lat - 0.0035) : lat;
-    final targetPoint = LatLng(targetLat, lng);
+    final currentZoom = _safeCurrentZoom;
+    final targetZoom = zoom ?? (currentZoom < 15.0 ? 16.0 : currentZoom);
+
+    double pixelOffsetY = 0.0;
+    if (isOffsetForSheet) {
+      double sheetHeight = 310.0;
+      double topInset = 40.0;
+      final context = Get.context;
+      if (context != null) {
+        final mq = MediaQuery.maybeOf(context);
+        if (mq != null) {
+          topInset = mq.padding.top > 0 ? mq.padding.top : 40.0;
+          final bottomInset = mq.padding.bottom;
+          sheetHeight = 265.0 + bottomInset;
+        }
+      }
+      pixelOffsetY = (sheetHeight - topInset) / 2;
+    }
+
+    final targetPoint = calculateCameraTargetForPoint(
+      point: LatLng(lat, lng),
+      zoom: targetZoom,
+      pixelOffsetY: pixelOffsetY,
+    );
 
     if (animated) {
       animatedMapMove(targetPoint, targetZoom);
@@ -434,15 +530,49 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     }
   }
 
+  /// Focus camera vào tọa độ của một sự cố SOS (tự động offset để tâm marker vào chính giữa phần hiển thị trên bottom sheet)
+  void focusOnSos(LatLng point, {double? zoom}) {
+    _hasCustomCameraFocus = true;
+    final currentZoom = _safeCurrentZoom;
+    final targetZoom = zoom ?? (currentZoom < 15.0 ? 16.0 : currentZoom);
+
+    double sheetHeight = 310.0;
+    double topInset = 40.0;
+    final context = Get.context;
+    if (context != null) {
+      final mq = MediaQuery.maybeOf(context);
+      if (mq != null) {
+        topInset = mq.padding.top > 0 ? mq.padding.top : 40.0;
+        final bottomInset = mq.padding.bottom;
+        sheetHeight = 265.0 + bottomInset;
+      }
+    }
+    final pixelOffsetY = (sheetHeight - topInset) / 2;
+
+    final targetPoint = calculateCameraTargetForPoint(
+      point: point,
+      zoom: targetZoom,
+      pixelOffsetY: pixelOffsetY,
+    );
+
+    animatedMapMove(targetPoint, targetZoom);
+  }
+
   @override
   void onClose() {
+    for (final w in _workers) {
+      w.dispose();
+    }
+    _workers.clear();
     _searchDebounce?.cancel();
     _autocompleteCancelToken?.cancel();
+    _reclusterDebounceTimer?.cancel();
     _positionStreamSub?.cancel();
     _cameraAnimationController?.dispose();
     _socketService.disconnect();
     searchController.dispose();
     mapEngineController.dispose();
+    _tagInfoCache.clear();
     super.onClose();
   }
 
@@ -452,19 +582,33 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     _lastClusteredZoom = _safeCurrentZoom;
     _buildPostMarkers(zoom: _lastClusteredZoom);
 
-    final isOnMapTab = Get.isRegistered<HomeController>() &&
+    final isOnMapTab =
+        Get.isRegistered<HomeController>() &&
         Get.find<HomeController>().currentIndex.value == 1;
     ensureInitialUserLocation(requestPermissionIfDenied: isOnMapTab);
   }
 
-  /// Lắng nghe khi người dùng zoom/pan bản đồ để tính toán lại gom cụm khi mức zoom thay đổi
+  /// Lắng nghe khi người dùng zoom/pan/xoay bản đồ để tính toán lại gom cụm
   void onMapPositionChanged(fm.MapCamera camera, bool hasGesture) {
     if (hasGesture) {
       _hasCustomCameraFocus = true;
     }
-    if ((camera.zoom - _lastClusteredZoom).abs() >= 0.25) {
-      _lastClusteredZoom = camera.zoom;
-      _buildPostMarkers(zoom: camera.zoom);
+
+    // Nếu camera đang bay theo animation mượt mà, bỏ qua recluster trung gian để tránh giật khung hình
+    if (_isProgrammaticCameraMoving) return;
+
+    if ((camera.zoom - _lastClusteredZoom).abs() >= 0.28) {
+      _reclusterDebounceTimer?.cancel();
+      if (hasGesture) {
+        // Debounce 120ms khi người dùng đang zoom/kéo liên tục để tránh giật lag do rebuild MarkerLayer giữa chừng
+        _reclusterDebounceTimer = Timer(const Duration(milliseconds: 120), () {
+          _lastClusteredZoom = camera.zoom;
+          _buildPostMarkers(zoom: camera.zoom);
+        });
+      } else {
+        _lastClusteredZoom = camera.zoom;
+        _buildPostMarkers(zoom: camera.zoom);
+      }
     }
   }
 
@@ -474,6 +618,10 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
     if (input.trim().isEmpty) {
       placeSuggestions.clear();
+      if (_searchResultMarker != null) {
+        _searchResultMarker = null;
+        _syncCombinedMarkers();
+      }
       return;
     }
 
@@ -524,7 +672,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
         LatLng target = LatLng(location.latitude, location.longitude);
 
         _hasCustomCameraFocus = true;
-        moveToLocation(target, zoom: 16.0);
+        animatedMapMove(target, 16.0);
 
         _searchResultMarker = fm.Marker(
           key: const ValueKey('search_result'),
@@ -533,12 +681,14 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
           height: 44,
           alignment: Alignment.topCenter,
           rotate: true,
-          child: Tooltip(
-            message: query,
-            child: const Icon(
-              Icons.location_pin,
-              color: Colors.purple,
-              size: 40,
+          child: RepaintBoundary(
+            child: Tooltip(
+              message: query,
+              child: const Icon(
+                Icons.location_pin,
+                color: AppTheme.primaryColor,
+                size: 40,
+              ),
             ),
           ),
         );
@@ -559,16 +709,17 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
         : AppMapType.normal;
   }
 
+  /// Quay về vị trí hiện tại của người dùng và giữ nguyên mức zoom bản đồ đang xem
   Future<void> goToMyLocation() async {
     try {
       isLoading.value = true;
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         CustomAlert.showError('map_location_service_disabled'.tr);
         return;
       }
 
-      LocationPermission permission = await Geolocator.checkPermission();
+      var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
@@ -584,7 +735,17 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
       _startLocationStream();
 
-      Position position = await Geolocator.getCurrentPosition(
+      // Giữ nguyên mức zoom hiện tại của bản đồ theo yêu cầu
+      final targetZoom = _safeCurrentZoom;
+
+      // Phản hồi tức thì: nếu đã có tọa độ vị trí hiện tại, lập tức di chuyển camera ngay
+      if (userLocation.value != null) {
+        _hasCenteredOnUserInitially = true;
+        _hasCustomCameraFocus = false;
+        animatedMapMove(userLocation.value!, targetZoom);
+      }
+
+      final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
           timeLimit: Duration(seconds: 10),
@@ -593,7 +754,8 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       final myPoint = LatLng(position.latitude, position.longitude);
       _updateUserLocationMarker(myPoint);
       _hasCenteredOnUserInitially = true;
-      animatedMapMove(myPoint, 15.5);
+      _hasCustomCameraFocus = false;
+      animatedMapMove(myPoint, targetZoom);
     } catch (e) {
       CustomAlert.showError('${'cannot_get_location'.tr}: $e');
     } finally {
@@ -638,7 +800,9 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
           }
         },
         onReconnect: () async {
-          debugPrint('[MapController] 🔄 Reconnected! Resync bài viết từ REST...');
+          debugPrint(
+            '[MapController] 🔄 Reconnected! Resync bài viết từ REST...',
+          );
           await _resyncPostsFromRest();
         },
         onError: (err) {
@@ -652,7 +816,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   /// Kiểm tra bài viết có đủ điều kiện hiển thị trên bản đồ không
   bool _isEligibleForMap(TrafficPostModel post) {
-    if (!post.isVisible) return false;
+    if (!post.isVisible || post.isDeleted) return false;
     final loc = post.location;
     if (loc == null) return false;
 
@@ -677,10 +841,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   /// Load tất cả bài viết từ REST API, merge với buffer và render marker
   Future<void> loadTaggedPosts() async {
     try {
-      final posts = await _postRepository.getPosts(
-        page: 0,
-        size: 50,
-      );
+      final posts = await _postRepository.getPosts(page: 0, size: 50);
 
       // Thêm bài viết từ REST
       for (final post in posts) {
@@ -709,10 +870,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   /// Đồng bộ bù dữ liệu từ REST sau khi reconnect WebSocket thành công
   Future<void> _resyncPostsFromRest() async {
     try {
-      final posts = await _postRepository.getPosts(
-        page: 0,
-        size: 50,
-      );
+      final posts = await _postRepository.getPosts(page: 0, size: 50);
 
       bool hasNew = false;
       for (final post in posts) {
@@ -736,36 +894,48 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     }
   }
 
-  /// Thêm marker an toàn khi nhận tin realtime (dedupe bằng post.id)
+  /// Thêm hoặc cập nhật marker an toàn khi nhận tin realtime (hỗ trợ cả NEW_POST, UPDATE_POST, DELETE_POST)
   void upsertPostAndMarker(TrafficPostModel post) {
-    if (post.id != null && !post.isVisible) {
+    if (post.id == null) return;
+
+    if (!post.isVisible || post.isDeleted) {
       syncPostDeleted(post.id!);
       return;
     }
 
     final location = post.location;
     if (location == null) {
-      return;
-    }
-
-    if (post.id == null || _postsById.containsKey(post.id)) {
+      syncPostDeleted(post.id!);
       return;
     }
 
     if (!_isEligibleForMap(post)) {
+      syncPostDeleted(post.id!);
       return;
     }
 
+    _tagInfoCache.remove(post.id!);
     _postsById[post.id!] = post;
-    taggedPosts.add(post);
+
+    final idx = taggedPosts.indexWhere((p) => p.id == post.id);
+    if (idx != -1) {
+      taggedPosts[idx] = post;
+    } else {
+      taggedPosts.add(post);
+    }
+
     _buildPostMarkers();
-    debugPrint('[MapController] 📍 Đã thêm & gom cụm marker realtime cho post: ${post.id}');
+    debugPrint(
+      '[MapController] 📍 Đã cập nhật & gom cụm marker realtime cho post: ${post.id}',
+    );
   }
 
-  /// Trích xuất tag khớp đầu tiên và nhãn hiển thị của bài viết
-  (String firstTag, String displayTag, Color tagColor) _resolvePostTagInfo(
-    TrafficPostModel post,
-  ) {
+  /// Tính toán và cache thông tin tag & icon & độ ưu tiên (O(1) cho các lần truy vấn tiếp theo)
+  _PostTagInfo _resolveTagInfo(TrafficPostModel post) {
+    final key = post.id ?? '${post.location?.lat}_${post.location?.lng}';
+    final cached = _tagInfoCache[key];
+    if (cached != null) return cached;
+
     final matchingTags = (post.hashtags ?? [])
         .map(HashtagHelper.toCanonical)
         .where((t) => kMapHashtags.contains(t))
@@ -774,17 +944,26 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     final displayTag = firstTag.isNotEmpty
         ? HashtagHelper.format(firstTag)
         : ((post.hashtags?.isNotEmpty ?? false)
-            ? HashtagHelper.format(post.hashtags!.first)
-            : (post.type != null && post.type!.isNotEmpty
-                ? '#${post.type}'
-                : ''));
+              ? HashtagHelper.format(post.hashtags!.first)
+              : (post.type != null && post.type!.isNotEmpty
+                    ? '#${post.type}'
+                    : ''));
     final tagColor = _colorForTag(firstTag);
-    return (firstTag, displayTag, tagColor);
+    final icon = _iconForTag(firstTag);
+    final priority = _calcPriority(firstTag);
+
+    final info = _PostTagInfo(
+      firstTag: firstTag,
+      displayTag: displayTag,
+      tagColor: tagColor,
+      icon: icon,
+      priority: priority,
+    );
+    _tagInfoCache[key] = info;
+    return info;
   }
 
-  /// Điểm ưu tiên của bài viết (SOS > Tai nạn > Báo cáo tai nạn > Kẹt xe > Ngập nước > Giao thông)
-  int _priorityForPost(TrafficPostModel post) {
-    final (firstTag, _, _) = _resolvePostTagInfo(post);
+  int _calcPriority(String firstTag) {
     switch (firstTag) {
       case 'sos':
         return 60;
@@ -802,12 +981,14 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     }
   }
 
+  int _priorityForPost(TrafficPostModel post) => _resolveTagInfo(post).priority;
+
   /// Bán kính gom cụm (mét) theo mức zoom hiện tại (tương ứng ~58px trên màn hình)
   double _clusterRadiusMetersForZoom(double zoom) {
     return (58.0 * 146000.0) / math.pow(2.0, zoom);
   }
 
-  /// Dựng marker đơn lẻ cho 1 bài viết (neo chuẩn mũi ghim Alignment.topCenter và tự xoay theo mắt nhìn)
+  /// Dựng marker đơn lẻ chuẩn Apple Maps Pill Badge (cô lập bằng RepaintBoundary)
   fm.Marker? _createMarkerForPost(
     TrafficPostModel post, {
     bool showLabel = true,
@@ -815,209 +996,53 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     final loc = post.location;
     if (loc == null) return null;
 
-    final (_, displayTag, tagColor) = _resolvePostTagInfo(post);
-    final shouldShowTag = showLabel && displayTag.isNotEmpty;
+    final info = _resolveTagInfo(post);
+    final shouldShowTag = showLabel && info.displayTag.isNotEmpty;
 
     return fm.Marker(
       key: ValueKey('post_${post.id}'),
       point: LatLng(loc.lat, loc.lng),
-      width: 92,
-      height: shouldShowTag ? 64 : 42,
+      width: 110,
+      height: shouldShowTag ? 68 : 42,
       alignment: Alignment.topCenter,
       rotate: true,
-      child: GestureDetector(
-        onTap: () => _showPostBottomSheet(post),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            if (shouldShowTag)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 7,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  displayTag,
-                  style: TextStyle(
-                    color: tagColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            Icon(
-              Icons.location_on,
-              color: tagColor,
-              size: 36,
-              shadows: [
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-          ],
+      child: RepaintBoundary(
+        child: PostMarkerWidget(
+          tagColor: info.tagColor,
+          tagIcon: info.icon,
+          displayTag: info.displayTag,
+          shouldShowTag: shouldShowTag,
+          onTap: () => _showPostBottomSheet(post),
         ),
       ),
     );
   }
 
-  /// Dựng Cluster Marker khi có nhiều bài viết nằm gần nhau hoặc trùng vị trí
+  /// Dựng Cluster Marker chuẩn Apple Maps khi có nhiều bài viết nằm gần nhau
   fm.Marker _createClusterMarker(
     _PostCluster cluster, {
     bool showLabel = true,
   }) {
     final primary = cluster.primaryPost;
     final count = cluster.posts.length;
-    final (_, displayTag, tagColor) = _resolvePostTagInfo(primary);
-    final shouldShowTag = showLabel && displayTag.isNotEmpty;
-    final countText = count > 99 ? '99+' : '$count';
+    final info = _resolveTagInfo(primary);
+    final shouldShowTag = showLabel && info.displayTag.isNotEmpty;
 
     return fm.Marker(
       key: ValueKey('cluster_${primary.id}_$count'),
       point: cluster.centroid,
-      width: 112,
-      height: shouldShowTag ? 70 : 48,
+      width: 124,
+      height: shouldShowTag ? 72 : 48,
       alignment: Alignment.topCenter,
       rotate: true,
-      child: GestureDetector(
-        onTap: () => _onClusterTapped(cluster),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            if (shouldShowTag)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 7,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: tagColor.withValues(alpha: 0.45),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        displayTag,
-                        style: TextStyle(
-                          color: tagColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: tagColor,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '+${count - 1}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            SizedBox(
-              width: 46,
-              height: 40,
-              child: Stack(
-                alignment: Alignment.bottomCenter,
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(
-                    Icons.location_on,
-                    color: tagColor,
-                    size: 38,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black.withValues(alpha: 0.38),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Container(
-                      constraints: const BoxConstraints(
-                        minWidth: 20,
-                        minHeight: 20,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: tagColor,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.white, width: 1.8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        countText,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          height: 1.0,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+      child: RepaintBoundary(
+        child: ClusterMarkerWidget(
+          tagColor: info.tagColor,
+          tagIcon: info.icon,
+          displayTag: info.displayTag,
+          count: count,
+          shouldShowTag: shouldShowTag,
+          onTap: () => _onClusterTapped(cluster),
         ),
       ),
     );
@@ -1052,41 +1077,63 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     }
   }
 
-  /// Dựng toàn bộ markers từ danh sách taggedPosts có gom cụm theo mức zoom và phân tầng ưu tiên
+  /// Dựng toàn bộ markers từ danh sách taggedPosts với gom cụm Spatial Grid O(N) & phân tầng LOD
   void _buildPostMarkers({double? zoom}) {
     final currentZoom = zoom ?? _safeCurrentZoom;
     final radiusMeters = _clusterRadiusMetersForZoom(currentZoom);
-    final showLabel = currentZoom >= 12.5;
+    final showLabel = currentZoom >= 14.0;
 
-    // 1. Sắp xếp bài viết theo độ ưu tiên giảm dần, sau đó theo thời gian mới nhất giảm dần
-    final validPosts = taggedPosts.where((p) => p.location != null).toList()
+    // 1. Lọc theo LOD Zoom (< 14.0 chỉ hiện sự cố nghiêm trọng/khẩn cấp) & sắp xếp ưu tiên giảm dần
+    final validPosts = _getVisiblePosts(currentZoom)
       ..sort((a, b) {
-        final prioCmp = _priorityForPost(b).compareTo(_priorityForPost(a));
+        final prioA = _priorityForPost(a);
+        final prioB = _priorityForPost(b);
+        final prioCmp = prioB.compareTo(prioA);
         if (prioCmp != 0) return prioCmp;
         final timeA = a.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0);
         final timeB = b.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0);
         return timeB.compareTo(timeA);
       });
 
-    // 2. Gom cụm các bài viết nằm gần nhau trong bán kính radiusMeters
+    // 2. Gom cụm nhanh bằng Spatial Grid Hash O(N) thay vì duyệt vét cạn O(N^2)
+    final double cellDeg = (radiusMeters / 111320.0).clamp(0.0001, 5.0);
+    final Map<(int, int), List<_PostCluster>> spatialGrid = {};
     final List<_PostCluster> clusters = [];
+
     for (final post in validPosts) {
-      final point = LatLng(post.location!.lat, post.location!.lng);
+      final lat = post.location!.lat;
+      final lng = post.location!.lng;
+      final point = LatLng(lat, lng);
+      final cellX = (lat / cellDeg).floor();
+      final cellY = (lng / cellDeg).floor();
+
       _PostCluster? matchedCluster;
       double minDistance = double.infinity;
 
-      for (final cluster in clusters) {
-        final dist = _geoDistance.as(LengthUnit.Meter, cluster.center, point);
-        if (dist <= radiusMeters && dist < minDistance) {
-          minDistance = dist;
-          matchedCluster = cluster;
+      for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -1; dy <= 1; dy++) {
+          final bucket = spatialGrid[(cellX + dx, cellY + dy)];
+          if (bucket == null) continue;
+          for (final cluster in bucket) {
+            final dist = _geoDistance.as(
+              LengthUnit.Meter,
+              cluster.center,
+              point,
+            );
+            if (dist <= radiusMeters && dist < minDistance) {
+              minDistance = dist;
+              matchedCluster = cluster;
+            }
+          }
         }
       }
 
       if (matchedCluster != null) {
         matchedCluster.posts.add(post);
       } else {
-        clusters.add(_PostCluster(posts: [post], center: point));
+        final newCluster = _PostCluster(posts: [post], center: point);
+        clusters.add(newCluster);
+        spatialGrid.putIfAbsent((cellX, cellY), () => []).add(newCluster);
       }
     }
 
@@ -1098,8 +1145,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       if (aIsCluster != bIsCluster) {
         return aIsCluster.compareTo(bIsCluster);
       }
-      return _priorityForPost(a.primaryPost)
-          .compareTo(_priorityForPost(b.primaryPost));
+      return _priorityForPost(a.primaryPost).compareTo(_priorityForPost(b.primaryPost));
     });
 
     _postMarkers.clear();
@@ -1113,33 +1159,48 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
           _postMarkers.add(marker);
         }
       } else {
-        _postMarkers.add(
-          _createClusterMarker(
-            cluster,
-            showLabel: currentZoom >= 12.0,
-          ),
-        );
+        _postMarkers.add(_createClusterMarker(cluster, showLabel: showLabel));
       }
     }
 
     _syncCombinedMarkers();
   }
 
+  /// Hệ thống Token màu chuẩn hóa từ AppTheme (Traffic Color Audit)
   Color _colorForTag(String tag) {
     switch (tag) {
       case 'ketxe':
-        return Colors.red;
+        return AppTheme.trafficCongestionColor;
       case 'tainan':
-        return Colors.deepOrange;
-      case 'ngaplutnuoc':
-        return Colors.cyan;
+        return AppTheme.trafficAccidentColor;
       case 'baocaotainan':
-        return Colors.amber;
+        return AppTheme.trafficReportColor;
+      case 'ngaplutnuoc':
+        return AppTheme.trafficFloodingColor;
       case 'sos':
-        return Colors.pinkAccent;
+        return AppTheme.trafficSosColor;
       case 'giaothong':
       default:
-        return Colors.purple;
+        return AppTheme.trafficGeneralColor;
+    }
+  }
+
+  /// Icon đặc trưng cho từng loại sự kiện giao thông theo chuẩn Apple Maps POI
+  IconData _iconForTag(String tag) {
+    switch (tag) {
+      case 'ketxe':
+        return Icons.traffic_rounded;
+      case 'tainan':
+        return Icons.car_crash_rounded;
+      case 'baocaotainan':
+        return Icons.warning_amber_rounded;
+      case 'ngaplutnuoc':
+        return Icons.water_drop_rounded;
+      case 'sos':
+        return Icons.sos_rounded;
+      case 'giaothong':
+      default:
+        return Icons.directions_car_filled_rounded;
     }
   }
 
@@ -1151,6 +1212,28 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   }
 
   void _showPostBottomSheet(TrafficPostModel initialPost) {
+    final loc = initialPost.location;
+    if (loc != null && _isMapEngineReady) {
+      _hasCustomCameraFocus = true;
+      final currentZoom = _safeCurrentZoom;
+      double sheetHeight = 350.0;
+      double topInset = 40.0;
+      final context = Get.context;
+      if (context != null) {
+        final mq = MediaQuery.maybeOf(context);
+        if (mq != null) {
+          topInset = mq.padding.top > 0 ? mq.padding.top : 40.0;
+          sheetHeight = mq.size.height * 0.42;
+        }
+      }
+      final pixelOffsetY = (sheetHeight - topInset) / 2;
+      final targetPoint = calculateCameraTargetForPoint(
+        point: LatLng(loc.lat, loc.lng),
+        zoom: currentZoom,
+        pixelOffsetY: pixelOffsetY,
+      );
+      animatedMapMove(targetPoint, currentZoom);
+    }
     PostBottomSheet.show(
       post: _resolveFreshPost(initialPost),
       currentUserId: currentUserId,
@@ -1221,10 +1304,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     final newLiked = !wasLiked;
     final newLikes = wasLiked ? prevLikes - 1 : prevLikes + 1;
 
-    postRx.value = p.copyWith(
-      isLiked: newLiked,
-      likes: newLikes,
-    );
+    postRx.value = p.copyWith(isLiked: newLiked, likes: newLikes);
     _syncToTaggedPosts(postRx.value);
     if (Get.isRegistered<DashboardController>()) {
       final dash = Get.find<DashboardController>();
@@ -1278,7 +1358,10 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     if (post.id == null) return;
 
     _postRepository
-        .reportPost(postId: post.id!, reason: 'dashboard_report_reason_inappropriate'.tr)
+        .reportPost(
+          postId: post.id!,
+          reason: 'dashboard_report_reason_inappropriate'.tr,
+        )
         .then((_) => CustomAlert.showSuccess('dashboard_report_success'.tr))
         .catchError((e) => CustomAlert.showError(e.toString()));
   }
@@ -1294,6 +1377,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   /// Đồng bộ nội dung bài viết sau khi người dùng chỉnh sửa
   void syncPostContentUpdated(String postId, String newContent) {
+    _tagInfoCache.remove(postId);
     final existing = _postsById[postId];
     if (existing != null) {
       final updated = existing.copyWith(content: newContent);
@@ -1310,6 +1394,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   /// Đồng bộ xóa bài viết khỏi bản đồ
   void syncPostDeleted(String postId) {
+    _tagInfoCache.remove(postId);
     _postsById.remove(postId);
     _bufferedPosts.remove(postId);
     final beforeLen = taggedPosts.length;
@@ -1320,47 +1405,66 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   }
 
   void _buildSosMarkers() {
-    // 1. Dọn dẹp danh sách marker SOS cũ
-    _sosMarkers.clear();
-
-    // 2. Kiểm tra nếu chính người dùng đang phát tín hiệu SOS -> Hiển thị Radar Marker sóng tỏa
     String myActiveId = '';
+    bool isMySosActive = false;
+    double myLat = 0;
+    double myLng = 0;
+
     if (Get.isRegistered<EmergencyController>()) {
       final emergencyCtrl = Get.find<EmergencyController>();
       myActiveId = emergencyCtrl.activeSosId.value;
+      isMySosActive = emergencyCtrl.isSosActive.value;
+      myLat = emergencyCtrl.activeSosLat.value;
+      myLng = emergencyCtrl.activeSosLng.value;
+    }
 
-      if (emergencyCtrl.isSosActive.value &&
-          emergencyCtrl.activeSosLat.value != 0.0 &&
-          emergencyCtrl.activeSosLng.value != 0.0) {
-        _sosMarkers.add(
-          fm.Marker(
-            key: const ValueKey('my_active_sos_radar'),
-            point: LatLng(
-              emergencyCtrl.activeSosLat.value,
-              emergencyCtrl.activeSosLng.value,
-            ),
-            width: 140,
-            height: 140,
-            alignment: Alignment.center,
-            rotate: true,
+    final sosList = SosStreamService.to.sosList;
+
+    // Tránh re-render không cần thiết nếu tọa độ hoặc danh sách không thay đổi
+    if (_lastSosActive == isMySosActive &&
+        _lastSosId == myActiveId &&
+        _lastSosLat == myLat &&
+        _lastSosLng == myLng &&
+        _lastSosListCount == sosList.length &&
+        _sosMarkers.isNotEmpty) {
+      return;
+    }
+
+    _lastSosActive = isMySosActive;
+    _lastSosId = myActiveId;
+    _lastSosLat = myLat;
+    _lastSosLng = myLng;
+    _lastSosListCount = sosList.length;
+
+    _sosMarkers.clear();
+
+    // Kiểm tra nếu chính người dùng đang phát tín hiệu SOS -> Hiển thị Radar Marker sóng tỏa
+    if (isMySosActive && myLat != 0.0 && myLng != 0.0) {
+      _sosMarkers.add(
+        fm.Marker(
+          key: const ValueKey('my_active_sos_radar'),
+          point: LatLng(myLat, myLng),
+          width: 140,
+          height: 140,
+          alignment: Alignment.center,
+          rotate: true,
+          child: RepaintBoundary(
             child: SosRadarMarkerWidget(
               size: 140,
               onTap: () {
-                // Chạm vào radar trên map mở lại sheet
-                emergencyCtrl.isSheetMinimized.value = false;
+                if (Get.isRegistered<EmergencyController>()) {
+                  Get.find<EmergencyController>().isSheetMinimized.value = false;
+                }
               },
             ),
           ),
-        );
-      }
+        ),
+      );
     }
 
-    // 3. Lấy dữ liệu từ Service (dành cho các SOS khác trong khu vực)
-    final sosList = SosStreamService.to.sosList;
-
+    // Lấy dữ liệu từ Service (dành cho các SOS khác trong khu vực)
     for (final sos in sosList) {
       if (sos.latitude == null || sos.longitude == null) continue;
-      // Bỏ qua nếu là SOS của chính mình vì đã được vẽ radar marker ở trên
       if (myActiveId.isNotEmpty && sos.sosId == myActiveId) continue;
 
       _sosMarkers.add(
@@ -1371,9 +1475,11 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
           height: 140,
           alignment: Alignment.center,
           rotate: true,
-          child: SosRadarMarkerWidget(
-            size: 140,
-            onTap: () => SosBottomSheet.show(sos: sos),
+          child: RepaintBoundary(
+            child: SosRadarMarkerWidget(
+              size: 140,
+              onTap: () => SosBottomSheet.show(sos: sos),
+            ),
           ),
         ),
       );

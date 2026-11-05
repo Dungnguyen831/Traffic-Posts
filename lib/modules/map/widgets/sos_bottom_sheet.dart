@@ -2,15 +2,24 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/models/sos_model.dart'; 
 import '../../../theme/app_theme.dart'; 
 import '../../../widgets/app_button.dart'; 
 import '../../../widgets/custom_alert.dart'; 
+import '../controllers/map_controller.dart';
 
 class SosBottomSheet {
   static void show({required SosResponseDTO sos}) {
+    if (sos.latitude != null && sos.longitude != null) {
+      if (Get.isRegistered<MapController>()) {
+        Get.find<MapController>().focusOnSos(
+          LatLng(sos.latitude!, sos.longitude!),
+        );
+      }
+    }
     // Xử lý thời gian (Lấy giờ và phút từ timestamp)
     String timeString = '';
     if (sos.timestamp != null) {
