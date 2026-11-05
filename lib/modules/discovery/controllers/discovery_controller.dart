@@ -81,7 +81,7 @@ class DiscoveryController extends GetxController {
       fineResponse.value = result;
     } catch (e) {
       if (isMockPlate(plate)) {
-        fineResponse.value = getMockFineResponseFor51C91820(
+        fineResponse.value = await getMockFineResponseFor51C91820(
           plate: plate,
           vehicle: selectedVehicle.value,
         );
