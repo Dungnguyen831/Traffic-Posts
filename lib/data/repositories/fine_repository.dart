@@ -74,9 +74,9 @@ class FineRepository {
         }
         final result = FineResponse.fromJson(rawData);
 
-        // Nếu là biển số mock 51C91820 và kết quả từ API rỗng thì ưu tiên lấy mock data 10 lỗi
+        // Nếu là biển số mock 51C91820 và kết quả từ API rỗng thì ưu tiên lấy mock data
         if (isMockPlate(plate) && result.data.isEmpty) {
-          final mockResult = getMockFineResponseFor51C91820(
+          final mockResult = await getMockFineResponseFor51C91820(
             plate: plate,
             vehicle: vehicle,
           );
@@ -103,9 +103,9 @@ class FineRepository {
       }
 
       // Sau 5s hoặc nếu không call được API:
-      // 1. Đối với biển số 51C91820: Trả về mock data mặc định gồm 10 lỗi vi phạm
+      // 1. Đối với biển số 51C91820: Trả về mock data từ file mock_data_phatnguoi.txt
       if (isMockPlate(plate)) {
-        final mockResult = getMockFineResponseFor51C91820(
+        final mockResult = await getMockFineResponseFor51C91820(
           plate: plate,
           vehicle: vehicle,
         );
