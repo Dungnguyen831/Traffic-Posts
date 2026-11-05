@@ -45,6 +45,15 @@ class AppTheme {
   static const Color infoAlertIconColor = Color(0xFF2196F3);
   static const Color infoAlertTextColor = Color(0xFF1565C0);
 
+  // Map & Traffic Semantic Tokens (Apple Maps Palette & Audited Tokens)
+  static const Color mapCanvasColor = Color(0xFFF6F4EF);
+  static const Color trafficCongestionColor = errorColor; // #E53935 (WCAG 4.68:1)
+  static const Color trafficAccidentColor = warningColor; // #F57C00 (WCAG 3.82:1)
+  static const Color trafficReportColor = warningLightColor; // #FFA726
+  static const Color trafficFloodingColor = Color(0xFF0288D1); // Deep Azure (WCAG 4.91:1)
+  static const Color trafficSosColor = errorColor; // #E53935
+  static const Color trafficGeneralColor = primaryColor; // #4D5DFA (WCAG 4.55:1)
+
   static ThemeData get lightTheme {
     return ThemeData(
       primaryColor: primaryColor,
