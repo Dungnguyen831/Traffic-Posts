@@ -17,15 +17,17 @@ class MapView extends GetView<MapController> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // flutter_map Engine
+          // flutter_map Engine (Raster Tiles MapTiler 256@2x mượt mà, ổn định tuyệt đối)
           Positioned.fill(
             child: fm.FlutterMap(
               mapController: controller.mapEngineController,
               options: fm.MapOptions(
                 initialCenter: controller.center,
-                initialZoom: 14.0,
+                initialZoom: 15.5,
                 minZoom: 3.0,
-                maxZoom: 19.0,
+                maxZoom: 21.0,
+                keepAlive: true,
+                backgroundColor: AppTheme.mapCanvasColor,
                 onMapReady: controller.onMapReady,
                 onPositionChanged: controller.onMapPositionChanged,
                 interactionOptions: const fm.InteractionOptions(
@@ -33,24 +35,38 @@ class MapView extends GetView<MapController> {
                 ),
               ),
               children: [
-                // Tile Layer
-                Obx(
-                  () => fm.TileLayer(
+                // Tile Layer (Raster Tiles MapTiler 256@2x phóng to chữ, sắc nét, có caching)
+                Obx(() {
+                  final isNormalMap =
+                      controller.currentMapType.value == AppMapType.normal;
+                  final useMapTiler = isNormalMap && controller.hasMapTilerKey;
+                  return fm.TileLayer(
                     urlTemplate: controller.currentTileUrl,
-                    fallbackUrl: controller.fallbackTileUrl,
+                    subdomains: isNormalMap && !useMapTiler
+                        ? const ['a', 'b', 'c']
+                        : const <String>[],
+                    panBuffer: 1,
+                    tileUpdateTransformer: fm.TileUpdateTransformers.throttle(
+                      const Duration(milliseconds: 100),
+                    ),
+                    tileDisplay: const fm.TileDisplay.fadeIn(
+                      duration: Duration(milliseconds: 120),
+                    ),
+                    retinaMode: false,
+                    maxNativeZoom: 19,
                     userAgentPackageName: 'com.trafficapp.app',
-                    maxZoom: 19,
-                  ),
-                ),
+                    maxZoom: 21,
+                  );
+                }),
 
-                // Polyline Layer cho các tuyến đường
+                // Polyline Layer cho các tuyến đường (dùng .toList() để kích hoạt lắng nghe RxList của GetX)
                 Obx(
                   () => fm.PolylineLayer(
                     polylines: controller.polylines.toList(),
                   ),
                 ),
 
-                // Marker Layer cho Search result, Bài viết tagged, và Sự cố SOS (kèm radar sóng tỏa)
+                // Marker Layer (dùng .toList() để kích hoạt lắng nghe RxList của GetX)
                 Obx(
                   () => fm.MarkerLayer(
                     rotate: true,
@@ -63,7 +79,8 @@ class MapView extends GetView<MapController> {
 
           // Search Bar: Ẩn khi SOS đang hoạt động để nhường không gian cho bản đồ và Top Banner
           Obx(() {
-            final isEmergencyRegistered = Get.isRegistered<EmergencyController>();
+            final isEmergencyRegistered =
+                Get.isRegistered<EmergencyController>();
             final isSosActive = isEmergencyRegistered &&
                 Get.find<EmergencyController>().isSosActive.value;
 
@@ -84,7 +101,7 @@ class MapView extends GetView<MapController> {
                       borderRadius: BorderRadius.circular(30.r),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 10,
                           offset: const Offset(0, 5),
                         ),
@@ -94,17 +111,20 @@ class MapView extends GetView<MapController> {
                       type: MaterialType.transparency,
                       child: TextField(
                         controller: controller.searchController,
+                        style: const TextStyle(color: AppTheme.textColor),
                         decoration: InputDecoration(
                           hintText: 'map_search_hint'.tr,
+                          hintStyle: const TextStyle(
+                            color: AppTheme.subTextColor,
+                          ),
                           border: InputBorder.none,
-                          icon: const Icon(IconlyBroken.search, color: Colors.grey),
+                          icon: const Icon(
+                            IconlyBroken.search,
+                            color: AppTheme.subTextColor,
+                          ),
                         ),
-                        onChanged: (value) {
-                          controller.fetchSuggestions(value);
-                        },
-                        onSubmitted: (value) {
-                          controller.searchLocation(value);
-                        },
+                        onChanged: controller.fetchSuggestions,
+                        onSubmitted: controller.searchLocation,
                       ),
                     ),
                   ),
@@ -117,7 +137,7 @@ class MapView extends GetView<MapController> {
                               borderRadius: BorderRadius.circular(10.r),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
+                                  color: Colors.black.withValues(alpha: 0.1),
                                   blurRadius: 10,
                                   offset: const Offset(0, 5),
                                 ),
@@ -131,10 +151,15 @@ class MapView extends GetView<MapController> {
                                 final suggestion =
                                     controller.placeSuggestions[index];
                                 return ListTile(
-                                  title: Text(suggestion['description']),
+                                  title: Text(
+                                    suggestion['description'],
+                                    style: const TextStyle(
+                                      color: AppTheme.textColor,
+                                    ),
+                                  ),
                                   leading: const Icon(
                                     IconlyBroken.location,
-                                    color: Colors.grey,
+                                    color: AppTheme.subTextColor,
                                   ),
                                   onTap: () {
                                     controller.selectSuggestion(suggestion);
@@ -153,7 +178,8 @@ class MapView extends GetView<MapController> {
 
           // Control Buttons (Map Type, My Location) - Tự động trượt lên khi mở sheet SOS
           Obx(() {
-            final isEmergencyRegistered = Get.isRegistered<EmergencyController>();
+            final isEmergencyRegistered =
+                Get.isRegistered<EmergencyController>();
             final isSosActive = isEmergencyRegistered &&
                 Get.find<EmergencyController>().isSosActive.value;
             final isSheetOpen = isSosActive &&
@@ -171,7 +197,10 @@ class MapView extends GetView<MapController> {
                     heroTag: 'map_type',
                     onPressed: controller.toggleMapType,
                     backgroundColor: AppTheme.backgroundColor,
-                    child: const Icon(Icons.layers, color: Colors.black87),
+                    child: const Icon(
+                      Icons.layers_rounded,
+                      color: AppTheme.textColor,
+                    ),
                   ),
                   SizedBox(height: 10.h),
 
@@ -182,8 +211,18 @@ class MapView extends GetView<MapController> {
                     backgroundColor: AppTheme.backgroundColor,
                     child: Obx(
                       () => controller.isLoading.value
-                          ? const CircularProgressIndicator(strokeWidth: 2)
-                          : const Icon(IconlyBold.location, color: Colors.black87),
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppTheme.primaryColor,
+                              ),
+                            )
+                          : const Icon(
+                              IconlyBold.location,
+                              color: AppTheme.primaryColor,
+                            ),
                     ),
                   ),
                 ],
