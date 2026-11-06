@@ -19,6 +19,7 @@ import '../../../data/services/traffic_post_socket_service.dart';
 import '../../../services/storage_service.dart';
 import '../../../theme/app_theme.dart';
 import '../widgets/map_marker_widgets.dart';
+import '../widgets/map_filter_bottom_sheet.dart';
 import '../widgets/post_bottom_sheet.dart';
 import '../widgets/sos_bottom_sheet.dart';
 import '../widgets/user_location_marker.dart';
@@ -27,6 +28,24 @@ import '../../emergency/controllers/emergency_controller.dart';
 import '../../emergency/views/sos_active_screen.dart';
 import '../../../utils/hashtag_helper.dart';
 import '../../home/controllers/home_controller.dart';
+
+/// Các mốc thời gian lọc bài viết trên bản đồ
+enum MapTimeFilter { all, last1Hour, last5Hours, last1Day }
+
+/// Mô tả cho một tùy chọn loại sự cố / tag lọc trên bản đồ
+class MapFilterTagOption {
+  final String? tag;
+  final String labelKey;
+  final IconData icon;
+  final Color color;
+
+  const MapFilterTagOption({
+    required this.tag,
+    required this.labelKey,
+    required this.icon,
+    required this.color,
+  });
+}
 
 /// Các kiểu bản đồ hỗ trợ chuyển đổi (Mặc định & Vệ tinh)
 enum AppMapType { normal, satellite }
@@ -138,6 +157,66 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   var isLoading = false.obs;
   var placeSuggestions = <Map<String, dynamic>>[].obs;
 
+  // Observables for Post Filtering
+  final Rx<MapTimeFilter> selectedTimeFilter = MapTimeFilter.all.obs;
+  final RxnString selectedTag = RxnString();
+  final RxnDouble selectedRadiusKm = RxnDouble();
+  Timer? _serverFilterDebounceTimer;
+
+  static const List<double> availableRadiiKm = [1.0, 3.0, 5.0, 10.0, 20.0];
+
+  static const List<MapFilterTagOption> filterTagOptions = [
+    MapFilterTagOption(
+      tag: null,
+      labelKey: 'map_filter_tag_all',
+      icon: Icons.grid_view_rounded,
+      color: AppTheme.textColor,
+    ),
+    MapFilterTagOption(
+      tag: 'ketxe',
+      labelKey: 'hashtag_label_ketxe',
+      icon: Icons.traffic_rounded,
+      color: AppTheme.trafficCongestionColor,
+    ),
+    MapFilterTagOption(
+      tag: 'tainan',
+      labelKey: 'hashtag_label_tainan',
+      icon: Icons.car_crash_rounded,
+      color: AppTheme.trafficAccidentColor,
+    ),
+    MapFilterTagOption(
+      tag: 'ngaplutnuoc',
+      labelKey: 'hashtag_label_ngaplutnuoc',
+      icon: Icons.water_drop_rounded,
+      color: AppTheme.trafficFloodingColor,
+    ),
+    MapFilterTagOption(
+      tag: 'baocaotainan',
+      labelKey: 'hashtag_label_baocaotainan',
+      icon: Icons.warning_amber_rounded,
+      color: AppTheme.trafficReportColor,
+    ),
+    MapFilterTagOption(
+      tag: 'sos',
+      labelKey: 'sos_sheet_title',
+      icon: Icons.sos_rounded,
+      color: AppTheme.trafficSosColor,
+    ),
+  ];
+
+  bool get hasActiveFilters =>
+      selectedTimeFilter.value != MapTimeFilter.all ||
+      selectedTag.value != null ||
+      selectedRadiusKm.value != null;
+
+  int get activeFilterCount {
+    int count = 0;
+    if (selectedTimeFilter.value != MapTimeFilter.all) count++;
+    if (selectedTag.value != null) count++;
+    if (selectedRadiusKm.value != null) count++;
+    return count;
+  }
+
   // Quản lý tách lớp marker để đảm bảo thứ tự Z-index: Post/Cluster -> Search -> UserLocation -> SOS (luôn trên cùng)
   final List<fm.Marker> _postMarkers = [];
   final List<fm.Marker> _sosMarkers = [];
@@ -180,14 +259,187 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     ]);
   }
 
-  /// Danh sách bài viết được lọc theo mức độ zoom được chỉ định (LOD Filter)
-  List<TrafficPostModel> _getVisiblePosts(double zoom) {
-    if (zoom < 14.0) {
-      return taggedPosts
-          .where((p) => p.location != null && _priorityForPost(p) >= 40)
-          .toList();
+  /// Kiểm tra xem 1 bài viết có thỏa mãn các tiêu chí lọc hiện tại hay không (Thời gian, Tag, Bán kính)
+  bool _matchesActiveFilters(TrafficPostModel post) {
+    // 1. Lọc theo Khoảng thời gian (1h, 5h, 1 ngày, hoặc Tất cả)
+    final timeFilter = selectedTimeFilter.value;
+    if (timeFilter != MapTimeFilter.all) {
+      final ts = post.timestamp;
+      if (ts == null) return false;
+      final diff = DateTime.now().difference(ts);
+      if (!diff.isNegative) {
+        switch (timeFilter) {
+          case MapTimeFilter.last1Hour:
+            if (diff > const Duration(hours: 1)) return false;
+            break;
+          case MapTimeFilter.last5Hours:
+            if (diff > const Duration(hours: 5)) return false;
+            break;
+          case MapTimeFilter.last1Day:
+            if (diff > const Duration(days: 1)) return false;
+            break;
+          case MapTimeFilter.all:
+            break;
+        }
+      }
     }
-    return taggedPosts.where((p) => p.location != null).toList();
+
+    // 2. Lọc theo Loại sự cố / Tag
+    final activeTag = selectedTag.value;
+    if (activeTag != null && activeTag.isNotEmpty) {
+      final canonicalTarget = HashtagHelper.toCanonical(activeTag);
+      final tags = (post.hashtags ?? [])
+          .map(HashtagHelper.toCanonical)
+          .toList();
+      final type = post.type?.toLowerCase();
+      bool matches = tags.contains(canonicalTarget);
+      if (!matches && type != null) {
+        matches = HashtagHelper.toCanonical(type) == canonicalTarget;
+      }
+      if (!matches) return false;
+    }
+
+    // 3. Lọc theo Bán kính quanh vị trí hiện tại của người dùng
+    final maxRadius = selectedRadiusKm.value;
+    if (maxRadius != null) {
+      final userLoc = userLocation.value;
+      if (userLoc == null || post.location == null) return false;
+      final distMeters = _geoDistance.as(
+        LengthUnit.Meter,
+        userLoc,
+        LatLng(post.location!.lat, post.location!.lng),
+      );
+      if (distMeters > maxRadius * 1000) return false;
+    }
+
+    return true;
+  }
+
+  /// Danh sách bài viết được lọc theo LOD zoom kết hợp toàn bộ tiêu chí lọc hiện tại
+  List<TrafficPostModel> _getVisiblePosts(double zoom) {
+    final filtered = taggedPosts.where(
+      (p) => p.location != null && _matchesActiveFilters(p),
+    );
+    if (zoom < 14.0) {
+      return filtered.where((p) => _priorityForPost(p) >= 40).toList();
+    }
+    return filtered.toList();
+  }
+
+  /// Thiết lập bộ lọc thời gian
+  void setTimeFilter(MapTimeFilter filter) {
+    if (selectedTimeFilter.value != filter) {
+      selectedTimeFilter.value = filter;
+      _buildPostMarkers();
+    }
+  }
+
+  /// Thiết lập bộ lọc loại sự cố / tag
+  void setTagFilter(String? tag) {
+    final canonical = tag != null ? HashtagHelper.toCanonical(tag) : null;
+    if (selectedTag.value != canonical) {
+      selectedTag.value = canonical;
+      _buildPostMarkers();
+      if (canonical != null) {
+        _debounceFetchFilteredPostsFromServer();
+      }
+    }
+  }
+
+  /// Thiết lập bộ lọc bán kính quanh vị trí hiện tại
+  Future<void> setRadiusFilter(double? radiusKm) async {
+    if (radiusKm != null && userLocation.value == null) {
+      await goToMyLocation();
+      if (userLocation.value == null) {
+        CustomAlert.showWarning('map_filter_need_location'.tr);
+        return;
+      }
+    }
+    selectedRadiusKm.value = radiusKm;
+    _buildPostMarkers();
+    if (radiusKm != null && userLocation.value != null) {
+      _debounceFetchFilteredPostsFromServer();
+    }
+  }
+
+  /// Đặt lại toàn bộ bộ lọc về mặc định
+  void resetAllFilters() {
+    selectedTimeFilter.value = MapTimeFilter.all;
+    selectedTag.value = null;
+    selectedRadiusKm.value = null;
+    _buildPostMarkers();
+  }
+
+  /// Áp dụng đồng thời nhiều tiêu chí lọc từ BottomSheet
+  Future<void> applyAdvancedFilters({
+    required MapTimeFilter timeFilter,
+    required String? tag,
+    required double? radiusKm,
+  }) async {
+    if (radiusKm != null && userLocation.value == null) {
+      await goToMyLocation();
+      if (userLocation.value == null) {
+        CustomAlert.showWarning('map_filter_need_location'.tr);
+        radiusKm = null;
+      }
+    }
+    selectedTimeFilter.value = timeFilter;
+    selectedTag.value = tag != null ? HashtagHelper.toCanonical(tag) : null;
+    selectedRadiusKm.value = radiusKm;
+    _buildPostMarkers();
+    if (selectedTag.value != null || selectedRadiusKm.value != null) {
+      _debounceFetchFilteredPostsFromServer();
+    }
+  }
+
+  /// Mở BottomSheet bộ lọc nâng cao với hiệu ứng Glass
+  void openFilterBottomSheet() {
+    Get.bottomSheet(
+      const MapFilterBottomSheet(),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  void _debounceFetchFilteredPostsFromServer() {
+    _serverFilterDebounceTimer?.cancel();
+    _serverFilterDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _fetchFilteredPostsFromServer();
+    });
+  }
+
+  /// Tải ngầm thêm bài viết khớp tiêu chí lọc từ Server REST
+  Future<void> _fetchFilteredPostsFromServer() async {
+    try {
+      final tag = selectedTag.value;
+      final radius = selectedRadiusKm.value;
+      final userLoc = userLocation.value;
+
+      final posts = await _postRepository.getPosts(
+        page: 0,
+        size: 50,
+        hashtag: tag,
+        lat: radius != null ? userLoc?.latitude : null,
+        lng: radius != null ? userLoc?.longitude : null,
+        radiusKm: radius,
+      );
+
+      bool hasNew = false;
+      for (final post in posts) {
+        if (post.id != null &&
+            !_postsById.containsKey(post.id) &&
+            _isEligibleForMap(post)) {
+          _postsById[post.id!] = post;
+          taggedPosts.add(post);
+          hasNew = true;
+        }
+      }
+      if (hasNew) {
+        _buildPostMarkers();
+      }
+    } catch (e) {
+      debugPrint('[MapController] _fetchFilteredPostsFromServer error: $e');
+    }
   }
 
   /// Cập nhật tọa độ và tạo lại marker chấm xanh vị trí hiện tại của người dùng (giữ nguyên zoom)
@@ -207,6 +459,9 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       ),
     );
     _syncCombinedMarkers();
+    if (selectedRadiusKm.value != null) {
+      _buildPostMarkers();
+    }
   }
 
   /// Lắng nghe luồng thay đổi vị trí khi người dùng di chuyển (>= 10m)
@@ -471,13 +726,17 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       final crs = mapEngineController.camera.crs;
       final pointOffset = crs.latLngToOffset(point, zoom);
       // Dời projected offset theo trục Y xuống dưới (South) để điểm point hiển thị dịch lên trên (North)
-      final shiftedOffset = Offset(pointOffset.dx, pointOffset.dy + pixelOffsetY);
+      final shiftedOffset = Offset(
+        pointOffset.dx,
+        pointOffset.dy + pixelOffsetY,
+      );
       return crs.offsetToLatLng(shiftedOffset, zoom);
     } catch (_) {
       // Dự phòng bằng công thức Web Mercator chuẩn nếu camera chưa sẵn sàng
       final rad = point.latitude * math.pi / 180.0;
       final latOffset =
-          (pixelOffsetY * 360.0 * math.cos(rad)) / (256.0 * math.pow(2.0, zoom));
+          (pixelOffsetY * 360.0 * math.cos(rad)) /
+          (256.0 * math.pow(2.0, zoom));
       return LatLng(point.latitude - latOffset, point.longitude);
     }
   }
@@ -567,6 +826,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     _searchDebounce?.cancel();
     _autocompleteCancelToken?.cancel();
     _reclusterDebounceTimer?.cancel();
+    _serverFilterDebounceTimer?.cancel();
     _positionStreamSub?.cancel();
     _cameraAnimationController?.dispose();
     _socketService.disconnect();
@@ -1145,7 +1405,9 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       if (aIsCluster != bIsCluster) {
         return aIsCluster.compareTo(bIsCluster);
       }
-      return _priorityForPost(a.primaryPost).compareTo(_priorityForPost(b.primaryPost));
+      return _priorityForPost(
+        a.primaryPost,
+      ).compareTo(_priorityForPost(b.primaryPost));
     });
 
     _postMarkers.clear();
@@ -1453,7 +1715,8 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
               size: 140,
               onTap: () {
                 if (Get.isRegistered<EmergencyController>()) {
-                  Get.find<EmergencyController>().isSheetMinimized.value = false;
+                  Get.find<EmergencyController>().isSheetMinimized.value =
+                      false;
                 }
               },
             ),
