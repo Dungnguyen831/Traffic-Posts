@@ -4,12 +4,24 @@ import 'package:get/get.dart';
 /// Lưu trữ đồng nhất Canonical ID ('ketxe', 'tainan'...) dưới Backend
 /// nhưng hiển thị nhãn và hashtag tùy biến theo Locale người dùng.
 class HashtagHelper {
-  static const Map<String, ({String vi, String en, String labelKey, List<String> aliases})> _tags = {
+  static const Map<
+    String,
+    ({String vi, String en, String labelKey, List<String> aliases})
+  >
+  _tags = {
     'ketxe': (
       vi: 'ketxe',
       en: 'trafficjam',
       labelKey: 'hashtag_label_ketxe',
-      aliases: ['ket xe', 'kẹt xe', 'traffic jam', 'trafficjam', 'congested', 'jam'],
+      aliases: [
+        'ket xe',
+        'kẹt xe',
+        'traffic jam',
+        'trafficjam',
+        'congested',
+        'congestion',
+        'jam',
+      ],
     ),
     'tainan': (
       vi: 'tainan',
@@ -21,13 +33,28 @@ class HashtagHelper {
       vi: 'ngaplutnuoc',
       en: 'flooding',
       labelKey: 'hashtag_label_ngaplutnuoc',
-      aliases: ['ngap nuoc', 'ngập nước', 'ngap lut', 'ngập lụt', 'flood', 'flooding'],
+      aliases: [
+        'ngap nuoc',
+        'ngập nước',
+        'ngap lut',
+        'ngập lụt',
+        'flood',
+        'flooding',
+      ],
     ),
     'baocaotainan': (
       vi: 'baocaotainan',
       en: 'alert',
       labelKey: 'hashtag_label_baocaotainan',
-      aliases: ['canh bao', 'cảnh báo', 'bao cao', 'báo cáo', 'alert', 'warning'],
+      aliases: [
+        'canh bao',
+        'cảnh báo',
+        'bao cao',
+        'báo cáo',
+        'alert',
+        'warning',
+        'hazard',
+      ],
     ),
     'giaothong': (
       vi: 'giaothong',
@@ -43,11 +70,14 @@ class HashtagHelper {
     ),
   };
 
-  /// Chuyển mọi tag (kể cả tiếng Anh '#trafficjam', '#accident') về canonical ID chuẩn
+  /// Chuyển mọi tag (kể cả tiếng Anh '#trafficjam', '#accident' hoặc có dấu cách 'tai nan') về canonical ID chuẩn
   static String toCanonical(String rawTag) {
     final clean = rawTag.toLowerCase().replaceAll('#', '').trim();
     for (final entry in _tags.entries) {
-      if (entry.key == clean || entry.value.vi == clean || entry.value.en == clean) {
+      if (entry.key == clean ||
+          entry.value.vi == clean ||
+          entry.value.en == clean ||
+          entry.value.aliases.contains(clean)) {
         return entry.key;
       }
     }
@@ -96,4 +126,3 @@ class HashtagHelper {
     return false;
   }
 }
-
