@@ -103,12 +103,16 @@ class ReputationBadgeWidget extends StatelessWidget {
             color: style.textColor,
           ),
           SizedBox(width: 4.w),
-          Text(
-            ReputationBadgeStyle.getLocalizedBadge(badge),
-            style: TextStyle(
-              fontSize: 10.5.sp,
-              fontWeight: FontWeight.w700,
-              color: style.textColor,
+          Flexible(
+            child: Text(
+              ReputationBadgeStyle.getLocalizedBadge(badge),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5.sp,
+                fontWeight: FontWeight.w700,
+                color: style.textColor,
+              ),
             ),
           ),
           if (showScore && score != null) ...[

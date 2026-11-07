@@ -256,13 +256,13 @@ class _BottomBarTab extends StatelessWidget {
                 ),
               ),
             ),
-            if (labelProgress > 0)
+            if (labelProgress > 0.01)
               ClipRect(
                 child: Align(
                   alignment: Alignment.topCenter,
-                  heightFactor: labelProgress,
+                  heightFactor: labelProgress.clamp(0.0, 1.0),
                   child: Opacity(
-                    opacity: labelProgress,
+                    opacity: labelProgress.clamp(0.0, 1.0),
                     child: Padding(
                       padding: const EdgeInsets.only(top: 3),
                       child: ExcludeSemantics(
@@ -525,7 +525,7 @@ class _TabIndicatorState extends State<_TabIndicator> {
                     ),
                   ),
                   child!,
-                  if (thickness > 0)
+                  if (thickness > 0.01)
                     _IndicatorTransform(
                       velocity: velocity,
                       tabCount: widget.tabCount,
@@ -534,7 +534,7 @@ class _TabIndicatorState extends State<_TabIndicator> {
                       child: IgnorePointer(
                         child: LiquidGlass.withOwnLayer(
                           settings: LiquidGlassSettings(
-                            visibility: thickness,
+                            visibility: thickness.clamp(0.0, 1.0),
                             glassColor: AppTheme.primaryColor.withValues(
                               alpha: .14,
                             ),
