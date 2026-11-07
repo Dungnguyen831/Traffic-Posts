@@ -105,6 +105,12 @@ class DashboardController extends GetxController {
   // Follow được key bởi userId để tất cả bài cùng người đồng bộ nhau
   final _followedStates = <String, RxBool>{};
 
+  // Bộ nhớ đệm khoảng cách địa lý để tránh tính lượng giác lặp lại trên mỗi frame cuộn
+  final Map<String, double> _distanceKmCache = <String, double>{};
+  final Map<String, String> _formattedDistanceCache = <String, String>{};
+  double? _cachedDistanceUserLat;
+  double? _cachedDistanceUserLng;
+
   RxBool likedState(String postId) =>
       _likedStates.putIfAbsent(postId, () => false.obs);
   RxInt likeCount(String postId) =>
@@ -123,6 +129,29 @@ class DashboardController extends GetxController {
     }
   }
 
+  /// Dọn dẹp các Rx state của bài viết cũ không còn nằm trong danh sách để tránh rò rỉ bộ nhớ
+  void _pruneStalePostStates() {
+    final activePostIds = <String>{
+      for (final p in _allPosts)
+        if (p.id != null) p.id!,
+      for (final p in pendingRealtimePosts)
+        if (p.id != null) p.id!,
+    };
+    final activeUserIds = <String>{
+      for (final p in _allPosts)
+        if (p.userId != null) p.userId!,
+      for (final p in pendingRealtimePosts)
+        if (p.userId != null) p.userId!,
+    };
+    _likedStates.removeWhere((key, _) => !activePostIds.contains(key));
+    _likeCounts.removeWhere((key, _) => !activePostIds.contains(key));
+    _followedStates.removeWhere((key, _) => !activeUserIds.contains(key));
+    _distanceKmCache.removeWhere((key, _) => !activePostIds.contains(key));
+    _formattedDistanceCache.removeWhere(
+      (key, _) => !activePostIds.contains(key),
+    );
+  }
+
   /// Đồng bộ trạng thái Follow từ màn hình khác (Map, UserProfile)
   void syncFollowFromExternal(String userId, bool isFollowed) {
     followedState(userId).value = isFollowed;
@@ -138,6 +167,7 @@ class DashboardController extends GetxController {
 
   // Voice search
   final isListening = false.obs;
+  bool _isVoiceSheetOpen = false;
   SpeechToText _speechToText = SpeechToText();
   bool _speechAvailable = false;
 
@@ -222,13 +252,15 @@ class DashboardController extends GetxController {
       return;
     }
 
+    _isVoiceSheetOpen = true;
     Get.bottomSheet(
       const VoiceSearchBottomSheet(),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-    ).then((_) {
+    ).whenComplete(() {
+      _isVoiceSheetOpen = false;
       if (isListening.value) {
-        stopVoiceSearch();
+        stopVoiceSearch(closeSheet: false);
       }
     });
 
@@ -263,12 +295,13 @@ class DashboardController extends GetxController {
     );
   }
 
-  /// Dừng thu âm và đóng Bottom Sheet
-  Future<void> stopVoiceSearch() async {
+  /// Dừng thu âm và đóng Bottom Sheet an toàn (không pop nhầm HomeView)
+  Future<void> stopVoiceSearch({bool closeSheet = true}) async {
     isListening.value = false;
     await _speechToText.stop();
 
-    if (Get.isBottomSheetOpen ?? false) {
+    if (closeSheet && _isVoiceSheetOpen && (Get.isBottomSheetOpen ?? false)) {
+      _isVoiceSheetOpen = false;
       Get.back();
     }
   }
@@ -329,9 +362,22 @@ class DashboardController extends GetxController {
       // 1. Lấy nhanh vị trí được cache gần nhất để hiển thị khoảng cách tức thì
       final lastKnown = await Geolocator.getLastKnownPosition();
       if (lastKnown != null) {
+        final prevLat = userLat.value;
+        final prevLng = userLng.value;
         userLat.value = lastKnown.latitude;
         userLng.value = lastKnown.longitude;
-        _applyFiltersAndSort();
+        final changed = prevLat == null ||
+            prevLng == null ||
+            Geolocator.distanceBetween(
+                  prevLat,
+                  prevLng,
+                  lastKnown.latitude,
+                  lastKnown.longitude,
+                ) >=
+                20.0;
+        if (changed && _allPosts.isNotEmpty) {
+          _applyFiltersAndSort();
+        }
       }
 
       // 2. Lấy vị trí chính xác hiện tại
@@ -342,9 +388,22 @@ class DashboardController extends GetxController {
         ),
       );
 
+      final prevLat = userLat.value;
+      final prevLng = userLng.value;
       userLat.value = position.latitude;
       userLng.value = position.longitude;
-      _applyFiltersAndSort();
+      final movedSignificantly = prevLat == null ||
+          prevLng == null ||
+          Geolocator.distanceBetween(
+                prevLat,
+                prevLng,
+                position.latitude,
+                position.longitude,
+              ) >=
+              20.0;
+      if (movedSignificantly && _allPosts.isNotEmpty) {
+        _applyFiltersAndSort();
+      }
       return true;
     } catch (e) {
       debugPrint('DashboardController refreshUserLocation error: $e');
@@ -354,11 +413,42 @@ class DashboardController extends GetxController {
     }
   }
 
-  /// Tính khoảng cách (km) từ vị trí hiện tại của người dùng tới bài viết
+  /// Làm mới bộ nhớ đệm khoảng cách khi vị trí người dùng dịch chuyển >= 20m
+  void _invalidateDistanceCacheIfNeeded() {
+    final lat = userLat.value;
+    final lng = userLng.value;
+    if (lat == null || lng == null) {
+      _distanceKmCache.clear();
+      _formattedDistanceCache.clear();
+      _cachedDistanceUserLat = null;
+      _cachedDistanceUserLng = null;
+      return;
+    }
+    if (_cachedDistanceUserLat != null && _cachedDistanceUserLng != null) {
+      final movedMeters = Geolocator.distanceBetween(
+        _cachedDistanceUserLat!,
+        _cachedDistanceUserLng!,
+        lat,
+        lng,
+      );
+      if (movedMeters < 20.0) return;
+    }
+    _distanceKmCache.clear();
+    _formattedDistanceCache.clear();
+    _cachedDistanceUserLat = lat;
+    _cachedDistanceUserLng = lng;
+  }
+
+  /// Tính khoảng cách (km) từ vị trí hiện tại của người dùng tới bài viết (có cache O(1))
   double? getDistanceKm(TrafficPostModel post) {
     if (!hasUserLocation) return null;
     final loc = post.location;
     if (loc == null || (loc.lat == 0.0 && loc.lng == 0.0)) return null;
+
+    _invalidateDistanceCacheIfNeeded();
+    final cacheKey = post.id ?? '${loc.lat}_${loc.lng}';
+    final cached = _distanceKmCache[cacheKey];
+    if (cached != null) return cached;
 
     final meters = Geolocator.distanceBetween(
       userLat.value!,
@@ -366,21 +456,35 @@ class DashboardController extends GetxController {
       loc.lat,
       loc.lng,
     );
-    return meters / 1000.0;
+    final km = meters / 1000.0;
+    _distanceKmCache[cacheKey] = km;
+    return km;
   }
 
   /// Định dạng khoảng cách hiển thị thân thiện (vd: "450 m", "2.4 km")
   String? formatDistance(TrafficPostModel post) {
+    if (!hasUserLocation) return null;
+    final loc = post.location;
+    if (loc == null || (loc.lat == 0.0 && loc.lng == 0.0)) return null;
+
+    _invalidateDistanceCacheIfNeeded();
+    final cacheKey = post.id ?? '${loc.lat}_${loc.lng}';
+    final cachedText = _formattedDistanceCache[cacheKey];
+    if (cachedText != null) return cachedText;
+
     final km = getDistanceKm(post);
     if (km == null) return null;
+    String formatted;
     if (km < 1.0) {
       final meters = (km * 1000).round().clamp(10, 999);
-      return '$meters m';
+      formatted = '$meters m';
+    } else if (km < 10.0) {
+      formatted = '${km.toStringAsFixed(1)} km';
+    } else {
+      formatted = '${km.round()} km';
     }
-    if (km < 10.0) {
-      return '${km.toStringAsFixed(1)} km';
-    }
-    return '${km.round()} km';
+    _formattedDistanceCache[cacheKey] = formatted;
+    return formatted;
   }
 
   /// Áp dụng toàn bộ Bộ lọc & Sắp xếp lên `_allPosts` để cập nhật `posts`
@@ -673,8 +777,6 @@ class DashboardController extends GetxController {
 
     if (refresh) {
       isLoading.value = true;
-      _allPosts.clear();
-      posts.clear();
     } else {
       isLoadingMore.value = true;
     }
@@ -690,6 +792,9 @@ class DashboardController extends GetxController {
       if (newPosts.isEmpty) {
         hasMore.value = false;
         if (refresh) {
+          _allPosts.clear();
+          posts.clear();
+          _pruneStalePostStates();
           refreshController.refreshCompleted();
         } else {
           refreshController.loadNoData();
@@ -700,6 +805,7 @@ class DashboardController extends GetxController {
           _allPosts
             ..clear()
             ..addAll(newPosts);
+          _pruneStalePostStates();
           _applyFiltersAndSort();
           refreshController.refreshCompleted();
         } else {
@@ -904,6 +1010,8 @@ class DashboardController extends GetxController {
     pendingRealtimePosts.removeWhere((p) => p.id == postId);
     _likedStates.remove(postId);
     _likeCounts.remove(postId);
+    _distanceKmCache.remove(postId);
+    _formattedDistanceCache.remove(postId);
     if (_allPosts.length != beforeLen) {
       _applyFiltersAndSort();
     }
