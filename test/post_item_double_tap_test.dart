@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -6,6 +9,16 @@ import 'package:traffic_app/data/models/traffic_post_model.dart';
 import 'package:traffic_app/modules/dashboard/widgets/post_item.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() {
+    const channel = MethodChannel('plugins.flutter.io/path_provider');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+      return Directory.systemTemp.path;
+    });
+  });
+
   testWidgets('Double tap on PostItem triggers like and unlike toggle',
       (WidgetTester tester) async {
     final isLikedRx = false.obs;
@@ -79,8 +92,10 @@ void main() {
     // Cho animation hoàn tất
     await tester.pump(const Duration(milliseconds: 800));
 
-    // Đợi hơn 350ms throttle trước khi nhấn đúp lần 2 (dùng Future.delayed để trôi thời gian thực tế)
-    await Future.delayed(const Duration(milliseconds: 400));
+    // Đợi hơn 350ms throttle trước khi nhấn đúp lần 2 (dùng runAsync để trôi thời gian thực tế trong FakeAsync)
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 400)),
+    );
     await tester.pump();
 
     // 2. Nhấn đúp lần nữa -> Hủy like bài viết
@@ -168,7 +183,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 800));
 
     // Đợi throttle
-    await Future.delayed(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 400)),
+    );
     await tester.pump();
 
     // 2. Nhấn đúp vào ảnh lần 2 -> Hủy like
@@ -205,6 +222,10 @@ void main() {
       return ScreenUtilInit(
         designSize: const Size(375, 812),
         builder: (context, child) => GetMaterialApp(
+          translationsKeys: const {
+            'vi_VN': {'report': 'Báo cáo'},
+          },
+          locale: const Locale('vi', 'VN'),
           home: Scaffold(
             body: SingleChildScrollView(
               child: PostItem(
@@ -232,5 +253,79 @@ void main() {
     await tester.pumpWidget(buildWidget(currentUserId: 10));
     await tester.pumpAndSettle();
     expect(find.text('Báo cáo'), findsNothing);
+  });
+
+  testWidgets(
+      'Multiple PostItems with identical post.id render without Hero tag conflict and support reactive hashtag taps',
+      (WidgetTester tester) async {
+    final isLikedRx = false.obs;
+    final likeCountRx = 3.obs;
+    final isFollowedRx = false.obs;
+    final activeHashtagRx = RxnString();
+    String? tappedTag;
+
+    final post = TrafficPostModel(
+      id: 'dup_post_1',
+      userId: '10',
+      userName: 'Người dùng có tên rất dài để kiểm tra chống tràn giao diện',
+      userBadge: 'Người dẫn đường',
+      content: 'Tuyến đường đang ùn tắc',
+      hashtags: ['ketxe', 'tainan'],
+      timestamp: DateTime.now(),
+      likes: 3,
+      isLiked: false,
+    );
+
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(375, 812),
+        builder: (context, child) => GetMaterialApp(
+          home: Scaffold(
+            body: ListView(
+              children: [
+                PostItem(
+                  post: post,
+                  isLikedRx: isLikedRx,
+                  likeCountRx: likeCountRx,
+                  isFollowedRx: isFollowedRx,
+                  activeHashtagRx: activeHashtagRx,
+                  onTapHashtag: (tag) {
+                    tappedTag = tag;
+                    activeHashtagRx.value = tag;
+                  },
+                  onLike: () {},
+                  onReport: () {},
+                  onFollow: () {},
+                ),
+                PostItem(
+                  post: post,
+                  isLikedRx: isLikedRx,
+                  likeCountRx: likeCountRx,
+                  isFollowedRx: isFollowedRx,
+                  activeHashtagRx: activeHashtagRx,
+                  onTapHashtag: (tag) {
+                    tappedTag = tag;
+                    activeHashtagRx.value = tag;
+                  },
+                  onLike: () {},
+                  onReport: () {},
+                  onFollow: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PostItem), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+
+    // Cập nhật activeHashtagRx để kiểm tra tính phản ứng cục bộ của RichText
+    activeHashtagRx.value = 'ketxe';
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(tappedTag, isNull);
   });
 }
