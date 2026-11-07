@@ -228,75 +228,63 @@ class DashboardView extends GetView<DashboardController> {
                           : ListView.builder(
                               padding: EdgeInsets.symmetric(horizontal: 24.w),
                               itemCount: controller.posts.length,
-                              cacheExtent: 1200,
-                              addRepaintBoundaries: false,
+                              cacheExtent: 450,
+                              addRepaintBoundaries: true,
                               itemBuilder: (context, index) {
                                 final post = controller.posts[index];
                                 final postId = post.id ?? '';
                                 final userId = post.userId ?? '';
-                                return Padding(
-                                  key: ValueKey('pad_$postId'),
-                                  padding: EdgeInsets.only(bottom: 20.h),
-                                  child: RepaintBoundary(
-                                    key: ValueKey(
-                                      '${postId}_${post.content.hashCode}',
-                                    ),
-                                    child: Obx(() {
-                                      final isNew =
-                                          controller.newPostId.value == post.id;
-                                      final isOwnPost =
-                                          controller.currentUserId != null &&
-                                          int.tryParse(userId) ==
-                                              controller.currentUserId;
-                                      final item = PostItem(
-                                        key: ValueKey(
-                                          '${postId}_${post.content.hashCode}',
-                                        ),
-                                        post: post,
-                                        isLikedRx:
-                                            controller.likedState(postId),
-                                        likeCountRx:
-                                            controller.likeCount(postId),
-                                        isFollowedRx:
-                                            controller.followedState(userId),
-                                        onLike: () =>
-                                            controller.toggleLike(post),
-                                        onReport: () =>
-                                            controller.reportPost(post),
-                                        onFollow: () =>
-                                            controller.toggleFollow(post),
-                                        onEdit: isOwnPost
-                                            ? () => controller
-                                                .openEditPostSheet(post)
-                                            : null,
-                                        onDelete: isOwnPost
-                                            ? () => controller
-                                                .confirmDeletePost(
-                                                  context,
-                                                  post,
-                                                )
-                                            : null,
-                                        currentUserId: controller.currentUserId,
-                                        distanceText:
-                                            controller.formatDistance(post),
-                                        onTapLocation: post.location != null
-                                            ? () => controller
-                                                .openPostOnMap(post)
-                                            : null,
-                                        onTapHashtag: (tag) => controller
-                                            .toggleHashtagFilter(tag),
-                                        activeHashtag:
-                                            controller.selectedHashtag.value,
-                                      );
-                                      return isNew
-                                          ? NewPostAnimator(
-                                              key: ValueKey('anim_$postId'),
-                                              dashController: controller,
-                                              child: item,
-                                            )
-                                          : item;
-                                    }),
+                                final isNew =
+                                    index == 0 &&
+                                    post.id != null &&
+                                    controller.newPostId.value == post.id;
+                                final isOwnPost =
+                                    controller.currentUserId != null &&
+                                    int.tryParse(userId) ==
+                                        controller.currentUserId;
+                                final item = PostItem(
+                                  key: ValueKey(
+                                    '${postId}_${post.content.hashCode}',
                                   ),
+                                  post: post,
+                                  isLikedRx: controller.likedState(postId),
+                                  likeCountRx: controller.likeCount(postId),
+                                  isFollowedRx: controller.followedState(
+                                    userId,
+                                  ),
+                                  onLike: () => controller.toggleLike(post),
+                                  onReport: () => controller.reportPost(post),
+                                  onFollow: () => controller.toggleFollow(post),
+                                  onEdit: isOwnPost
+                                      ? () => controller.openEditPostSheet(post)
+                                      : null,
+                                  onDelete: isOwnPost
+                                      ? () => controller.confirmDeletePost(
+                                          context,
+                                          post,
+                                        )
+                                      : null,
+                                  currentUserId: controller.currentUserId,
+                                  distanceText: controller.formatDistance(post),
+                                  onTapLocation: post.location != null
+                                      ? () => controller.openPostOnMap(post)
+                                      : null,
+                                  onTapHashtag: (tag) =>
+                                      controller.toggleHashtagFilter(tag),
+                                  activeHashtag:
+                                      controller.selectedHashtag.value,
+                                  activeHashtagRx: controller.selectedHashtag,
+                                );
+                                return Padding(
+                                  key: ValueKey('pad_${postId}_$index'),
+                                  padding: EdgeInsets.only(bottom: 20.h),
+                                  child: isNew
+                                      ? NewPostAnimator(
+                                          key: ValueKey('anim_$postId'),
+                                          dashController: controller,
+                                          child: item,
+                                        )
+                                      : item,
                                 );
                               },
                             ),

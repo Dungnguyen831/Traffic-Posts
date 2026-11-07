@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -9,7 +10,6 @@ import 'package:intl/intl.dart';
 import '../../../data/models/traffic_post_model.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/full_screen_image_viewer.dart';
-import '../../../widgets/loading_widget.dart';
 import '../../../widgets/reputation_badge.dart';
 import '../../profile/views/user_profile_screen.dart';
 import '../../../utils/hashtag_helper.dart';
@@ -29,6 +29,7 @@ class PostItem extends StatefulWidget {
   final VoidCallback? onTapLocation;
   final void Function(String tag)? onTapHashtag;
   final String? activeHashtag;
+  final RxnString? activeHashtagRx;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
@@ -47,6 +48,7 @@ class PostItem extends StatefulWidget {
     this.onTapLocation,
     this.onTapHashtag,
     this.activeHashtag,
+    this.activeHashtagRx,
     this.onEdit,
     this.onDelete,
   });
@@ -60,6 +62,8 @@ class _PostItemState extends State<PostItem>
   late final AnimationController _heartAnimController;
   late final Animation<double> _scaleAnimation;
   late final Animation<double> _opacityAnimation;
+  final Map<String, TapGestureRecognizer> _hashtagRecognizers =
+      <String, TapGestureRecognizer>{};
 
   bool _showHeartOverlay = false;
   bool _isLikedAction = true;
@@ -78,35 +82,42 @@ class _PostItemState extends State<PostItem>
 
     _scaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.2, end: 1.25)
-            .chain(CurveTween(curve: Curves.easeOutBack)),
+        tween: Tween<double>(
+          begin: 0.2,
+          end: 1.25,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 35,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.25, end: 0.95)
-            .chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween<double>(
+          begin: 1.25,
+          end: 0.95,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 25,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.95, end: 1.08)
-            .chain(CurveTween(curve: Curves.easeIn)),
+        tween: Tween<double>(
+          begin: 0.95,
+          end: 1.08,
+        ).chain(CurveTween(curve: Curves.easeIn)),
         weight: 40,
       ),
     ]).animate(_heartAnimController);
 
     _opacityAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
+        tween: Tween<double>(
+          begin: 0.0,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeIn)),
         weight: 20,
       ),
+      TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 50),
       TweenSequenceItem(
-        tween: ConstantTween<double>(1.0),
-        weight: 50,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeOut)),
+        tween: Tween<double>(
+          begin: 1.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeOut)),
         weight: 30,
       ),
     ]).animate(_heartAnimController);
@@ -124,8 +135,33 @@ class _PostItemState extends State<PostItem>
 
   @override
   void dispose() {
+    for (final recognizer in _hashtagRecognizers.values) {
+      recognizer.dispose();
+    }
+    _hashtagRecognizers.clear();
     _heartAnimController.dispose();
     super.dispose();
+  }
+
+  TapGestureRecognizer _recognizerForTag(String canonicalTag) {
+    return _hashtagRecognizers.putIfAbsent(canonicalTag, () {
+      return TapGestureRecognizer()
+        ..onTap = () => widget.onTapHashtag?.call(canonicalTag);
+    });
+  }
+
+  void _openUserProfile(String heroTag) {
+    final post = widget.post;
+    if (post.userId == null) return;
+    Get.to(
+      () => const UserProfileScreen(),
+      arguments: {
+        'userId': post.userId,
+        'heroTag': heroTag,
+        'initialAvatarUrl': post.fullAvatarUrl,
+        'initialUserName': post.userName,
+      },
+    );
   }
 
   /// Xử lý tương tác chạm 2 lần vào ảnh hoặc phạm vi bài viết để Like / Hủy Like
@@ -188,10 +224,7 @@ class _PostItemState extends State<PostItem>
 
           return Opacity(
             opacity: opacity,
-            child: Transform.scale(
-              scale: scale,
-              child: child,
-            ),
+            child: Transform.scale(scale: scale, child: child),
           );
         },
         child: Center(
@@ -271,8 +304,9 @@ class _PostItemState extends State<PostItem>
       return 'dashboard_time_just_now'.tr;
     }
     if (diff.inMinutes < 60) {
-      return 'dashboard_time_minutes_ago'
-          .trParams({'min': '${diff.inMinutes}'});
+      return 'dashboard_time_minutes_ago'.trParams({
+        'min': '${diff.inMinutes}',
+      });
     }
     if (diff.inHours < 24) {
       return 'dashboard_time_hours_ago'.trParams({'hour': '${diff.inHours}'});
@@ -283,28 +317,73 @@ class _PostItemState extends State<PostItem>
     return DateFormat('dd/MM/yyyy HH:mm').format(timestamp.toLocal());
   }
 
+  Widget _buildContentRichText(
+    TrafficPostModel post,
+    String? effectiveActiveHashtag,
+  ) {
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(
+          fontSize: 16.sp,
+          fontWeight: FontWeight.w500,
+          color: const Color(0xFF616161),
+          height: 1.4,
+        ),
+        children: [
+          TextSpan(text: '${post.content ?? ''} '),
+          if (post.hashtags != null && post.hashtags!.isNotEmpty)
+            ...post.hashtags!.map((tag) {
+              final cleanTag = tag.replaceAll('#', '').trim();
+              final canonicalTag = HashtagHelper.toCanonical(cleanTag);
+              final isSelectedTag =
+                  effectiveActiveHashtag != null &&
+                  effectiveActiveHashtag.toLowerCase() == canonicalTag;
+              final displayTag = HashtagHelper.format(cleanTag);
+              final tagStyle = TextStyle(
+                fontSize: 16.sp,
+                height: 1.4,
+                fontWeight: isSelectedTag ? FontWeight.w800 : FontWeight.w600,
+                color: isSelectedTag
+                    ? const Color(0xFFE53935)
+                    : const Color(0xFF4D5DFA),
+                decoration: isSelectedTag
+                    ? TextDecoration.underline
+                    : TextDecoration.none,
+              );
+              return TextSpan(
+                text: '$displayTag ',
+                style: tagStyle,
+                recognizer: widget.onTapHashtag != null
+                    ? _recognizerForTag(canonicalTag)
+                    : null,
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final post = widget.post;
     final relativeTime = _formatRelativeTime(post.timestamp);
     final loc = post.location;
-    final hasAddress = loc != null &&
+    final hasAddress =
+        loc != null &&
         (loc.address.trim().isNotEmpty || (loc.lat != 0.0 && loc.lng != 0.0));
     final displayAddress = (loc != null && loc.address.trim().isNotEmpty)
         ? loc.address.trim()
         : (loc != null
-            ? '${loc.lat.toStringAsFixed(4)}, ${loc.lng.toStringAsFixed(4)}'
-            : '');
+              ? '${loc.lat.toStringAsFixed(4)}, ${loc.lng.toStringAsFixed(4)}'
+              : '');
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onDoubleTapDown: (details) {
         _lastPostTapOffset = details.localPosition;
       },
-      onDoubleTap: () => _triggerDoubleTapLike(
-        isImage: false,
-        tapOffset: _lastPostTapOffset,
-      ),
+      onDoubleTap: () =>
+          _triggerDoubleTapLike(isImage: false, tapOffset: _lastPostTapOffset),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -335,114 +414,130 @@ class _PostItemState extends State<PostItem>
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12.r),
                     child:
-                        post.fullImageUrls != null && post.fullImageUrls!.isNotEmpty
-                            ? Builder(
-                                builder: (context) {
-                                  final images = post.fullImageUrls!;
-                                  final heroPrefix =
-                                      'post_img_${post.id ?? post.hashCode}_${identityHashCode(widget)}';
+                        post.fullImageUrls != null &&
+                            post.fullImageUrls!.isNotEmpty
+                        ? Builder(
+                            builder: (context) {
+                              final images = post.fullImageUrls!;
+                              final heroPrefix =
+                                  'post_img_${post.id ?? post.hashCode}_${identityHashCode(widget)}';
 
-                                  return GestureDetector(
-                                    onTap: () {
-                                      FullScreenImageViewer.show(
-                                        context,
-                                        imageUrls: images,
-                                        initialIndex: 0,
-                                        heroTagPrefix: heroPrefix,
-                                      );
-                                    },
-                                    onDoubleTapDown: (details) {
-                                      _lastImageTapOffset = details.localPosition;
-                                    },
-                                    onDoubleTap: () => _triggerDoubleTapLike(
-                                      isImage: true,
-                                      tapOffset: _lastImageTapOffset != null
-                                          ? Offset(
-                                              _lastImageTapOffset!.dx + 20.w,
-                                              _lastImageTapOffset!.dy + 20.w,
-                                            )
-                                          : null,
-                                    ),
-                                    child: Stack(
-                                      fit: StackFit.expand,
-                                      children: [
-                                        Hero(
-                                          tag: '${heroPrefix}_0',
-                                          child: CachedNetworkImage(
-                                            imageUrl: images.first,
-                                            fit: BoxFit.cover,
-                                            memCacheWidth: 800,
-                                            fadeInDuration: Duration.zero,
-                                            fadeOutDuration: Duration.zero,
-                                            placeholder: (context, url) =>
-                                                const Center(child: LoadingWidget()),
-                                            errorWidget: (context, url, error) =>
-                                                Center(
+                              return GestureDetector(
+                                onTap: () {
+                                  FullScreenImageViewer.show(
+                                    context,
+                                    imageUrls: images,
+                                    initialIndex: 0,
+                                    heroTagPrefix: heroPrefix,
+                                  );
+                                },
+                                onDoubleTapDown: (details) {
+                                  _lastImageTapOffset = details.localPosition;
+                                },
+                                onDoubleTap: () => _triggerDoubleTapLike(
+                                  isImage: true,
+                                  tapOffset: _lastImageTapOffset != null
+                                      ? Offset(
+                                          _lastImageTapOffset!.dx + 20.w,
+                                          _lastImageTapOffset!.dy + 20.w,
+                                        )
+                                      : null,
+                                ),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Hero(
+                                      tag: '${heroPrefix}_0',
+                                      child: CachedNetworkImage(
+                                        imageUrl: images.first,
+                                        fit: BoxFit.cover,
+                                        memCacheWidth: 800,
+                                        fadeInDuration: Duration.zero,
+                                        fadeOutDuration: Duration.zero,
+                                        placeholder: (context, url) =>
+                                            Container(
+                                              color: const Color(0xFFF3F4F6),
+                                              child: Center(
+                                                child: Icon(
+                                                  IconlyBroken.image_2,
+                                                  size: 38.w,
+                                                  color: Colors.grey[350],
+                                                ),
+                                              ),
+                                            ),
+                                        errorWidget: (context, url, error) =>
+                                            Center(
                                               child: Icon(
                                                 IconlyBroken.image_2,
                                                 size: 48.w,
                                                 color: Colors.grey[400],
                                               ),
                                             ),
-                                          ),
-                                        ),
-                                        // Badge gợi ý bấm để phóng to & tổng số ảnh
-                                        Positioned(
-                                          right: 10.w,
-                                          bottom: 10.h,
-                                          child: Container(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 8.w,
-                                              vertical: 5.h,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color:
-                                                  Colors.black.withValues(alpha: 0.58),
-                                              borderRadius:
-                                                  BorderRadius.circular(20.r),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons.zoom_out_map_rounded,
-                                                  color: Colors.white,
-                                                  size: 14.sp,
-                                                ),
-                                                if (images.length > 1) ...[
-                                                  SizedBox(width: 4.w),
-                                                  Text(
-                                                    '1/${images.length}',
-                                                    style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 11.sp,
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
-                                  );
-                                },
-                              )
-                            : Center(
-                                child: Icon(
-                                  IconlyBroken.location,
-                                  size: 48.w,
-                                  color: Colors.grey[400],
+                                    // Badge gợi ý bấm để phóng to & tổng số ảnh
+                                    Positioned(
+                                      right: 10.w,
+                                      bottom: 10.h,
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 8.w,
+                                          vertical: 5.h,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.58,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            20.r,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.zoom_out_map_rounded,
+                                              color: Colors.white,
+                                              size: 14.sp,
+                                            ),
+                                            if (images.length > 1) ...[
+                                              SizedBox(width: 4.w),
+                                              Text(
+                                                '1/${images.length}',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11.sp,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
+                              );
+                            },
+                          )
+                        : Center(
+                            child: Icon(
+                              IconlyBroken.location,
+                              size: 48.w,
+                              color: Colors.grey[400],
+                            ),
+                          ),
                   ),
                 ),
                 SizedBox(height: 12.h),
 
                 // User Info + Relative Time
                 Obx(() {
-                  final showBadge = _shouldShowFollowBadge(widget.isFollowedRx.value);
+                  final showBadge = _shouldShowFollowBadge(
+                    widget.isFollowedRx.value,
+                  );
+                  final avatarHeroTag =
+                      'avatar_${post.id ?? post.hashCode}_${identityHashCode(widget)}';
 
                   final avatarWidget = ClipOval(
                     child: post.fullAvatarUrl != null
@@ -459,7 +554,11 @@ class _PostItemState extends State<PostItem>
                               width: 40.w,
                               height: 40.w,
                               color: Colors.grey[300],
-                              child: LoadingWidget(width: 40.w, height: 40.w),
+                              child: Icon(
+                                IconlyBroken.profile,
+                                size: 22.w,
+                                color: Colors.grey[500],
+                              ),
                             ),
                             errorWidget: (context, url, error) => Container(
                               width: 40.w,
@@ -491,20 +590,7 @@ class _PostItemState extends State<PostItem>
                     children: [
                       GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onTap: () {
-                          if (post.userId != null) {
-                            final heroTag = 'avatar_${post.id}';
-                            Get.to(
-                              () => const UserProfileScreen(),
-                              arguments: {
-                                'userId': post.userId,
-                                'heroTag': heroTag,
-                                'initialAvatarUrl': post.fullAvatarUrl,
-                                'initialUserName': post.userName,
-                              },
-                            );
-                          }
-                        },
+                        onTap: () => _openUserProfile(avatarHeroTag),
                         child: Padding(
                           padding: EdgeInsets.only(
                             right: 12.w,
@@ -518,7 +604,7 @@ class _PostItemState extends State<PostItem>
                               children: [
                                 widget.enableHeroAvatar
                                     ? Hero(
-                                        tag: 'avatar_${post.id}',
+                                        tag: avatarHeroTag,
                                         child: avatarWidget,
                                       )
                                     : avatarWidget,
@@ -554,18 +640,7 @@ class _PostItemState extends State<PostItem>
                       ),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () {
-                            if (post.userId != null) {
-                              final heroTag = 'avatar_${post.id}';
-                              Get.to(
-                                () => const UserProfileScreen(),
-                                arguments: {
-                                  'userId': post.userId,
-                                  'heroTag': heroTag,
-                                },
-                              );
-                            }
-                          },
+                          onTap: () => _openUserProfile(avatarHeroTag),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -585,13 +660,16 @@ class _PostItemState extends State<PostItem>
                                     ),
                                   ),
                                   SizedBox(width: 6.w),
-                                  ReputationBadgeWidget(
-                                    badge: (post.userBadge != null &&
-                                            post.userBadge!.trim().isNotEmpty)
-                                        ? post.userBadge!
-                                        : 'Người dẫn đường',
-                                    score: post.userReputationScore,
-                                    isCompact: true,
+                                  Flexible(
+                                    child: ReputationBadgeWidget(
+                                      badge:
+                                          (post.userBadge != null &&
+                                              post.userBadge!.trim().isNotEmpty)
+                                          ? post.userBadge!
+                                          : 'Người dẫn đường',
+                                      score: post.userReputationScore,
+                                      isCompact: true,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -704,14 +782,14 @@ class _PostItemState extends State<PostItem>
                   GestureDetector(
                     onTap: widget.onTapLocation,
                     child: Container(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.w,
+                        vertical: 7.h,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF6F7FB),
                         borderRadius: BorderRadius.circular(10.r),
-                        border: Border.all(
-                          color: const Color(0xFFE9ECF5),
-                        ),
+                        border: Border.all(color: const Color(0xFFE9ECF5)),
                       ),
                       child: Row(
                         children: [
@@ -733,8 +811,9 @@ class _PostItemState extends State<PostItem>
                                 borderRadius: BorderRadius.circular(6.r),
                               ),
                               child: Text(
-                                'dashboard_distance_away'.trParams(
-                                    {'distance': widget.distanceText!}),
+                                'dashboard_distance_away'.trParams({
+                                  'distance': widget.distanceText!,
+                                }),
                                 style: TextStyle(
                                   fontSize: 11.sp,
                                   fontWeight: FontWeight.w700,
@@ -786,58 +865,17 @@ class _PostItemState extends State<PostItem>
                 SizedBox(height: 10.h),
 
                 // Content + Interactive Hashtags
-                RichText(
-                  text: TextSpan(
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      fontWeight: FontWeight.w500,
-                      color: const Color(0xFF616161),
-                      height: 1.4,
+                if (post.hashtags != null &&
+                    post.hashtags!.isNotEmpty &&
+                    widget.activeHashtagRx != null)
+                  Obx(
+                    () => _buildContentRichText(
+                      post,
+                      widget.activeHashtagRx!.value ?? widget.activeHashtag,
                     ),
-                    children: [
-                      TextSpan(text: '${post.content ?? ''} '),
-                      if (post.hashtags != null && post.hashtags!.isNotEmpty)
-                        ...post.hashtags!.map((tag) {
-                          final cleanTag = tag.replaceAll('#', '').trim();
-                          final canonicalTag = HashtagHelper.toCanonical(cleanTag);
-                          final isSelectedTag = widget.activeHashtag != null &&
-                              widget.activeHashtag!.toLowerCase() ==
-                                  canonicalTag;
-                          final displayTag = HashtagHelper.format(cleanTag);
-                          final tagStyle = TextStyle(
-                            fontSize: 16.sp,
-                            height: 1.4,
-                            fontWeight: isSelectedTag
-                                ? FontWeight.w800
-                                : FontWeight.w600,
-                            color: isSelectedTag
-                                ? const Color(0xFFE53935)
-                                : const Color(0xFF4D5DFA),
-                            decoration: isSelectedTag
-                                ? TextDecoration.underline
-                                : TextDecoration.none,
-                          );
-                          if (widget.onTapHashtag == null) {
-                            return TextSpan(
-                              text: '$displayTag ',
-                              style: tagStyle,
-                            );
-                          }
-                          return WidgetSpan(
-                            alignment: PlaceholderAlignment.baseline,
-                            baseline: TextBaseline.alphabetic,
-                            child: GestureDetector(
-                              onTap: () => widget.onTapHashtag!(canonicalTag),
-                              child: Text(
-                                '$displayTag ',
-                                style: tagStyle,
-                              ),
-                            ),
-                          );
-                        }),
-                    ],
-                  ),
-                ),
+                  )
+                else
+                  _buildContentRichText(post, widget.activeHashtag),
                 SizedBox(height: 12.h),
 
                 // Actions

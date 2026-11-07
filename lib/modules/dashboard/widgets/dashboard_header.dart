@@ -4,8 +4,6 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
-import 'package:traffic_app/widgets/loading_widget.dart';
-
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:flutter/services.dart';
@@ -137,27 +135,55 @@ class DashboardHeader extends StatelessWidget {
               return Container(
                 width: 36.w,
                 height: 36.w,
-                decoration: const BoxDecoration(shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryBgColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.18),
+                    width: 1,
+                  ),
+                ),
                 clipBehavior: Clip.antiAlias,
                 child: isLoading
-                    ? Center(child: LoadingWidget(width: 20.w))
+                    ? Center(
+                        child: SizedBox(
+                          width: 16.w,
+                          height: 16.w,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                      )
                     : (avatarUrl.isEmpty
                           ? Icon(
                               IconlyBroken.profile,
                               size: 20.sp,
-                              color: Colors.white,
+                              color: AppTheme.primaryColor,
                             )
                           : CachedNetworkImage(
                               imageUrl: avatarUrl,
                               fit: BoxFit.cover,
                               width: 36.w,
                               height: 36.w,
-                              placeholder: (context, url) =>
-                                  Center(child: LoadingWidget(width: 20.w)),
+                              memCacheWidth: 120,
+                              memCacheHeight: 120,
+                              fadeInDuration: Duration.zero,
+                              fadeOutDuration: Duration.zero,
+                              placeholder: (context, url) => Center(
+                                child: SizedBox(
+                                  width: 16.w,
+                                  height: 16.w,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              ),
                               errorWidget: (context, url, error) => Icon(
                                 IconlyBroken.profile,
                                 size: 20.sp,
-                                color: Colors.white,
+                                color: AppTheme.primaryColor,
                               ),
                             )),
               );
