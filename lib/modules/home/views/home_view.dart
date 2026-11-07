@@ -28,7 +28,7 @@ class HomeView extends GetView<HomeController> {
       backgroundColor: AppTheme.backgroundColor,
       body: Stack(
         children: [
-          // 1. Main Tab Views (Lazy mounted for tabs 2, 3, 4)
+          // 1. Main Tab Views (Lazy mounted for tabs 1, 2, 3, 4)
           // NotificationListener bắt sự kiện cuộn dọc từ mọi tab để thu nhỏ /
           // mở rộng thanh điều hướng.
           NotificationListener<ScrollNotification>(
@@ -39,7 +39,9 @@ class HomeView extends GetView<HomeController> {
                 index: controller.currentIndex.value,
                 children: [
                   const DashboardView(),
-                  const MapView(),
+                  visited.contains(1)
+                      ? const MapView()
+                      : const SizedBox.shrink(),
                   visited.contains(2)
                       ? const CameraView()
                       : const SizedBox.shrink(),
@@ -54,88 +56,92 @@ class HomeView extends GetView<HomeController> {
             }),
           ),
 
-          // 2. Liquid Glass Bottom Bar
+          // 2. Liquid Glass Bottom Bar (Cô lập RepaintBoundary để không ảnh hưởng FPS khi cuộn danh sách)
           SafeArea(
             bottom: false,
             child: Align(
               alignment: Alignment.bottomCenter,
-              child: Obx(
-                () => LiquidGlassBottomBar(
-                  selectedIndex: controller.currentIndex.value,
-                  collapsed: controller.isNavBarCollapsed.value,
-                  onExpandRequested: () =>
-                      controller.isNavBarCollapsed.value = false,
-                  onTabSelected: controller.changeTab,
-                  tabs: [
-                    LiquidGlassBottomBarTab(
-                      label: 'home_bottom_navbar'.tr,
-                      icon: IconlyBroken.home,
-                      selectedIcon: IconlyBold.home,
-                    ),
-                    LiquidGlassBottomBarTab(
-                      label: 'map_bottom_navbar'.tr,
-                      icon: IconlyBroken.location,
-                      selectedIcon: IconlyBold.location,
-                    ),
-                    LiquidGlassBottomBarTab(
-                      label: 'camera_bottom_navbar'.tr,
-                      icon: IconlyBroken.camera,
-                      selectedIcon: IconlyBold.camera,
-                    ),
-                    LiquidGlassBottomBarTab(
-                      label: 'discovery_bottom_navbar'.tr,
-                      icon: IconlyBroken.search,
-                      selectedIcon: IconlyBold.search,
-                    ),
-                    LiquidGlassBottomBarTab(
-                      label: 'chatbot_bottom_navbar'.tr,
-                      icon: IconlyBroken.chat,
-                      selectedIcon: IconlyBold.chat,
-                    ),
-                  ],
+              child: RepaintBoundary(
+                child: Obx(
+                  () => LiquidGlassBottomBar(
+                    selectedIndex: controller.currentIndex.value,
+                    collapsed: controller.isNavBarCollapsed.value,
+                    onExpandRequested: () =>
+                        controller.isNavBarCollapsed.value = false,
+                    onTabSelected: controller.changeTab,
+                    tabs: [
+                      LiquidGlassBottomBarTab(
+                        label: 'home_bottom_navbar'.tr,
+                        icon: IconlyBroken.home,
+                        selectedIcon: IconlyBold.home,
+                      ),
+                      LiquidGlassBottomBarTab(
+                        label: 'map_bottom_navbar'.tr,
+                        icon: IconlyBroken.location,
+                        selectedIcon: IconlyBold.location,
+                      ),
+                      LiquidGlassBottomBarTab(
+                        label: 'camera_bottom_navbar'.tr,
+                        icon: IconlyBroken.camera,
+                        selectedIcon: IconlyBold.camera,
+                      ),
+                      LiquidGlassBottomBarTab(
+                        label: 'discovery_bottom_navbar'.tr,
+                        icon: IconlyBroken.search,
+                        selectedIcon: IconlyBold.search,
+                      ),
+                      LiquidGlassBottomBarTab(
+                        label: 'chatbot_bottom_navbar'.tr,
+                        icon: IconlyBroken.chat,
+                        selectedIcon: IconlyBold.chat,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
 
-          // 3. Upload Progress Overlay
-          Obx(() {
-            if (!controller.isUploading.value) {
-              return const SizedBox.shrink();
-            }
-            return Positioned(
-              top: topPadding + 8,
-              left: 0,
-              right: 0,
-              child: UploadProgressOverlay(
-                progress: controller.uploadProgress.value,
-                label: controller.uploadLabel.value,
-                onCancel: controller.cancelUpload,
-              ),
-            );
-          }),
+          // 3 & 4. Top Status Overlay (Upload Progress & Location Permission Banner)
+          Positioned(
+            top: topPadding + 8,
+            left: 0,
+            right: 0,
+            child: Obx(() {
+              final uploading = controller.isUploading.value;
+              final showLocationBanner =
+                  !uploading &&
+                  !controller.locationBannerDismissed.value &&
+                  (controller.isLocationPermissionDenied.value ||
+                      controller.isLocationServiceDisabled.value);
 
-          // 4. Location Permission / Service Banner
-          Obx(() {
-            final showBanner =
-                !controller.locationBannerDismissed.value &&
-                !controller.isUploading.value &&
-                (controller.isLocationPermissionDenied.value ||
-                    controller.isLocationServiceDisabled.value);
-            if (!showBanner) {
-              return const SizedBox.shrink();
-            }
-            return Positioned(
-              top: topPadding + 8,
-              left: 0,
-              right: 0,
-              child: LocationPermissionBanner(
-                isServiceDisabled: controller.isLocationServiceDisabled.value,
-                onAction: controller.requestLocationPermission,
-                onDismiss: controller.dismissLocationBanner,
-              ),
-            );
-          }),
+              Widget bannerChild = const SizedBox.shrink(
+                key: ValueKey('no_banner'),
+              );
+              if (uploading) {
+                bannerChild = UploadProgressOverlay(
+                  key: const ValueKey('upload_banner'),
+                  progress: controller.uploadProgress.value,
+                  label: controller.uploadLabel.value,
+                  onCancel: controller.cancelUpload,
+                );
+              } else if (showLocationBanner) {
+                bannerChild = LocationPermissionBanner(
+                  key: const ValueKey('location_banner'),
+                  isServiceDisabled: controller.isLocationServiceDisabled.value,
+                  onAction: controller.requestLocationPermission,
+                  onDismiss: controller.dismissLocationBanner,
+                );
+              }
+
+              return AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: bannerChild,
+              );
+            }),
+          ),
 
           // 5. Bottom SOS Dialog
           Obx(() {

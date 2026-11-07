@@ -11,10 +11,13 @@ import 'package:traffic_app/modules/map/controllers/map_controller.dart';
 class HomeController extends GetxController with WidgetsBindingObserver {
   // Bottom Navigation State
   var currentIndex = 0.obs;
-  final visitedTabs = <int>{0, 1}.obs;
+  final visitedTabs = <int>{0}.obs;
 
   // Thu nhỏ thanh điều hướng khi người dùng cuộn xuống xem nội dung
   final isNavBarCollapsed = false.obs;
+  double _accumulatedScrollDelta = 0.0;
+  static const double _collapseScrollThreshold = 28.0;
+  static const double _expandScrollThreshold = -20.0;
 
   // Upload Progress State
   var isUploading = false.obs;
@@ -34,6 +37,18 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
     _initLocationMonitoring();
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    // Khởi tạo ngầm MapController sau khi khung hình Trang chủ đầu tiên đã render xong
+    // để duy trì kết nối STOMP WebSocket nhận bài viết mới mà không gây nghẽn lúc mở app
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (!isClosed && Get.isRegistered<MapController>()) {
+        Get.find<MapController>();
+      }
+    });
   }
 
   @override
@@ -91,7 +106,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       // Auto-hide banner if permission is now granted
       if (!denied) {
         locationBannerDismissed.value = false;
-        if (Get.isRegistered<MapController>()) {
+        if (visitedTabs.contains(1) && Get.isRegistered<MapController>()) {
           Get.find<MapController>().ensureInitialUserLocation();
         }
       }
@@ -116,7 +131,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
           result == LocationPermission.whileInUse) {
         isLocationPermissionDenied.value = false;
         locationBannerDismissed.value = false;
-        if (Get.isRegistered<MapController>()) {
+        if (visitedTabs.contains(1) && Get.isRegistered<MapController>()) {
           Get.find<MapController>().ensureInitialUserLocation();
         }
         if (currentIndex.value == 2 &&
@@ -134,35 +149,77 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     locationBannerDismissed.value = true;
   }
 
-  /// Lắng nghe cuộn dọc của các tab: cuộn xuống -> thu nhỏ thanh điều hướng,
-  /// cuộn lên hoặc về đầu danh sách -> mở rộng lại.
+  /// Lắng nghe cuộn dọc của các tab: cuộn xuống đủ ngưỡng -> thu nhỏ thanh điều hướng,
+  /// cuộn lên đủ ngưỡng hoặc về đầu danh sách -> mở rộng lại.
   bool handleScrollNotification(ScrollNotification notification) {
-    if (notification.metrics.axis != Axis.vertical) return false;
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+
+    if (notification is ScrollStartNotification) {
+      _accumulatedScrollDelta = 0.0;
+      return false;
+    }
 
     if (notification is ScrollUpdateNotification) {
-      final delta = notification.scrollDelta ?? 0;
-      if (notification.metrics.pixels <=
-          notification.metrics.minScrollExtent + 4) {
-        isNavBarCollapsed.value = false;
-      } else if (notification.dragDetails != null && delta.abs() > 1.5) {
-        isNavBarCollapsed.value = delta > 0;
+      final pixels = notification.metrics.pixels;
+      final minExtent = notification.metrics.minScrollExtent;
+
+      if (pixels <= minExtent + 12) {
+        _accumulatedScrollDelta = 0.0;
+        if (isNavBarCollapsed.value) {
+          isNavBarCollapsed.value = false;
+        }
+        return false;
+      }
+
+      // Bỏ qua vùng nảy (overscroll bounce) ở cuối danh sách để tránh đảo trạng thái thanh bar
+      if (pixels >= notification.metrics.maxScrollExtent) {
+        return false;
+      }
+
+      final delta = notification.scrollDelta ?? 0.0;
+      if (delta == 0.0) return false;
+
+      if ((delta > 0 && _accumulatedScrollDelta < 0) ||
+          (delta < 0 && _accumulatedScrollDelta > 0)) {
+        _accumulatedScrollDelta = 0.0;
+      }
+
+      _accumulatedScrollDelta += delta;
+
+      if (_accumulatedScrollDelta >= _collapseScrollThreshold) {
+        if (!isNavBarCollapsed.value) {
+          isNavBarCollapsed.value = true;
+        }
+        _accumulatedScrollDelta = 0.0;
+      } else if (_accumulatedScrollDelta <= _expandScrollThreshold) {
+        if (isNavBarCollapsed.value) {
+          isNavBarCollapsed.value = false;
+        }
+        _accumulatedScrollDelta = 0.0;
       }
     }
     return false;
   }
 
   void changeTab(int index) {
+    _accumulatedScrollDelta = 0.0;
     if (index == 0 && currentIndex.value == 0) {
       if (Get.isRegistered<DashboardController>()) {
         Get.find<DashboardController>().scrollToTop();
-        isNavBarCollapsed.value = false;
+        if (isNavBarCollapsed.value) {
+          isNavBarCollapsed.value = false;
+        }
       }
       return;
     }
     final wasVisited = visitedTabs.contains(index);
     visitedTabs.add(index);
     currentIndex.value = index;
-    isNavBarCollapsed.value = false;
+    if (isNavBarCollapsed.value) {
+      isNavBarCollapsed.value = false;
+    }
 
     // Khi người dùng mở tab Bản đồ (index 1), đảm bảo đã định vị vị trí người dùng
     if (index == 1 && Get.isRegistered<MapController>()) {

@@ -134,7 +134,11 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
 
   // Tọa độ dự phòng (Hà Nội) chỉ dùng khi chưa lấy được GPS của người dùng
   final LatLng _fallbackCenter = const LatLng(21.028511, 105.804817);
+  LatLng? _pendingFocusTarget;
   LatLng get center {
+    if (_pendingFocusTarget != null) {
+      return _pendingFocusTarget!;
+    }
     if (userLocation.value != null) {
       return userLocation.value!;
     }
@@ -839,6 +843,11 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   void onMapReady() {
     debugPrint('MapController: flutter_map engine is ready');
     _isMapEngineReady = true;
+    final pendingTarget = _pendingFocusTarget;
+    if (pendingTarget != null) {
+      _pendingFocusTarget = null;
+      moveToLocation(pendingTarget, zoom: 16.5);
+    }
     _lastClusteredZoom = _safeCurrentZoom;
     _buildPostMarkers(zoom: _lastClusteredZoom);
 
@@ -1530,8 +1539,13 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     }
 
     final target = LatLng(loc.lat, loc.lng);
+    _pendingFocusTarget = target;
+    if (!_isMapEngineReady) return;
     Future.delayed(const Duration(milliseconds: 180), () {
-      animatedMapMove(target, 16.5);
+      if (_isMapEngineReady && _pendingFocusTarget == target) {
+        _pendingFocusTarget = null;
+        animatedMapMove(target, 16.5);
+      }
     });
   }
 
