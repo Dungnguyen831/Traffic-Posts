@@ -127,6 +127,7 @@ class StorageService extends GetxService {
     String? province,
     String? relativePhone,
     String? phoneNumber,
+    String? avatarUrl,
     int? reputationScore,
     String? badge,
     bool? canCreatePost,
@@ -143,6 +144,9 @@ class StorageService extends GetxService {
     }
     if (phoneNumber != null && phoneNumber.isNotEmpty) {
       await _prefs.setString('user_phoneNumber', phoneNumber);
+    }
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      await _prefs.setString('user_avatarUrl', avatarUrl);
     }
     if (reputationScore != null) {
       await _prefs.setInt('user_reputationScore', reputationScore);
@@ -182,6 +186,8 @@ class StorageService extends GetxService {
 
   String? getPhoneNumber() => _prefs.getString('user_phoneNumber');
 
+  String? getAvatarUrl() => _prefs.getString('user_avatarUrl');
+
   int getReputationScore() => _prefs.getInt('user_reputationScore') ?? 100;
 
   String getBadge() => _prefs.getString('user_badge') ?? 'Người dẫn đường';
@@ -217,6 +223,7 @@ class StorageService extends GetxService {
     await _prefs.remove('user_province');
     await _prefs.remove('user_relativePhone');
     await _prefs.remove('user_phoneNumber');
+    await _prefs.remove('user_avatarUrl');
     await _prefs.remove('user_reputationScore');
     await _prefs.remove('user_badge');
     await _prefs.remove('user_canCreatePost');

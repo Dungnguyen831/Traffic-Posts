@@ -1,10 +1,12 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 class ProfileRequest {
   int? id;
   String? username;
   String? fullname;
   String? email;
   String? province;
-  String? phoneNumber; 
+  String? phoneNumber;
   String? avatarUrl;
   String? relativePhone;
   int? roleId;
@@ -28,16 +30,26 @@ class ProfileRequest {
   });
 
   factory ProfileRequest.fromJson(Map<String, dynamic> json) {
-    final Map<String, dynamic> data = (json['data'] is Map<String, dynamic>)
+    final Map<String, dynamic> rawData = (json['data'] is Map<String, dynamic>)
         ? json['data'] as Map<String, dynamic>
         : (json['data'] is Map
-            ? Map<String, dynamic>.from(json['data'] as Map)
-            : json);
+              ? Map<String, dynamic>.from(json['data'] as Map)
+              : json);
+    final Map<String, dynamic> data = (rawData['userInfo'] is Map)
+        ? Map<String, dynamic>.from(rawData['userInfo'] as Map)
+        : rawData;
 
     final scoreRaw = data['reputationScore'];
     final score = scoreRaw is num
         ? scoreRaw.toInt()
         : (scoreRaw is String ? int.tryParse(scoreRaw) ?? 100 : 100);
+
+    final rawAvatar =
+        data['avatarUrl'] ??
+        data['avatar'] ??
+        data['avatar_url'] ??
+        rawData['avatarUrl'] ??
+        rawData['avatar'];
 
     return ProfileRequest(
       id: data['id'] is num
@@ -48,13 +60,38 @@ class ProfileRequest {
       email: data['email'] as String?,
       province: data['province'] as String?,
       phoneNumber: (data['phoneNumber'] ?? data['phone']) as String?,
-      avatarUrl: data['avatarUrl'] as String?,
+      avatarUrl: rawAvatar?.toString(),
       relativePhone: data['relativePhone'] as String?,
       roleId: data['roleId'] is num ? (data['roleId'] as num).toInt() : null,
       reputationScore: score,
       badge: data['badge'] as String? ?? 'Người dẫn đường',
       canCreatePost: data['canCreatePost'] as bool? ?? (score >= 80),
     );
+  }
+
+  /// Hàm hỗ trợ lấy link ảnh avatar đầy đủ (Đồng bộ với TrafficPostModel & UserInfoModel)
+  String? get fullAvatarUrl {
+    if (avatarUrl == null || avatarUrl!.trim().isEmpty) return null;
+    final raw = avatarUrl!.trim();
+
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
+    }
+
+    final baseUrl = (dotenv.env['BASE_URL'] ?? '').replaceAll(
+      RegExp(r'/+$'),
+      '',
+    );
+    if (raw.startsWith('/uploads/')) {
+      return '$baseUrl$raw';
+    }
+    if (raw.startsWith('uploads/')) {
+      return '$baseUrl/$raw';
+    }
+    if (raw.startsWith('/')) {
+      return '$baseUrl/uploads$raw';
+    }
+    return '$baseUrl/uploads/$raw';
   }
 
   Map<String, dynamic> toJson() {
