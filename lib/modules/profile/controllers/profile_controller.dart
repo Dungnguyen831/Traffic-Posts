@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
@@ -7,6 +8,7 @@ import 'package:traffic_app/widgets/custom_alert.dart';
 import 'package:traffic_app/widgets/custom_dialog.dart';
 
 import '../../../data/models/profile_request.dart';
+import '../../../data/models/user_info_model.dart';
 import '../../../data/repositories/user_repository.dart';
 import '../../../data/services/api_service.dart';
 import '../../../routes/app_pages.dart';
@@ -31,7 +33,7 @@ class ProfileController extends GetxController {
   var isLoading = false.obs;
 
   var selectedImagePath = ''.obs;
-  var currentAvatarUrl = ''.obs;
+  var currentAvatarUrl = (StorageService.to.getAvatarUrl() ?? '').obs;
 
   // Provinces data
   var provinces = <Map<String, dynamic>>[].obs;
@@ -106,6 +108,35 @@ class ProfileController extends GetxController {
       badge.value = badgeName;
       canCreatePost.value = canPost;
 
+      String? resolvedAvatarUrl = user.fullAvatarUrl;
+      final uid = user.id ?? StorageService.to.getUserId();
+
+      // Fallback: Nếu API /users/profile không trả về avatarUrl, lấy từ /users/{id}/profile
+      if ((resolvedAvatarUrl == null || resolvedAvatarUrl.isEmpty) &&
+          uid != null) {
+        try {
+          final profileDetail = await _userRepository.getUserProfile(
+            uid.toString(),
+            page: 0,
+            size: 1,
+          );
+          final userInfo = profileDetail['userInfo'] as UserInfoModel?;
+          resolvedAvatarUrl = userInfo?.fullAvatarUrl;
+        } catch (e) {
+          debugPrint('Fallback avatar load error: $e');
+        }
+      }
+
+      if (resolvedAvatarUrl != null && resolvedAvatarUrl.isNotEmpty) {
+        if (forceRefresh) {
+          if (currentAvatarUrl.value.isNotEmpty) {
+            await CachedNetworkImage.evictFromCache(currentAvatarUrl.value);
+          }
+          await CachedNetworkImage.evictFromCache(resolvedAvatarUrl);
+        }
+        currentAvatarUrl.value = resolvedAvatarUrl;
+      }
+
       StorageService.to.saveUserInfo(
         userId: user.id,
         username: user.username,
@@ -113,6 +144,7 @@ class ProfileController extends GetxController {
         province: user.province,
         relativePhone: user.relativePhone,
         phoneNumber: user.phoneNumber,
+        avatarUrl: resolvedAvatarUrl,
         reputationScore: score,
         badge: badgeName,
         canCreatePost: canPost,
@@ -132,13 +164,6 @@ class ProfileController extends GetxController {
         if (province.isNotEmpty) {
           selectedProvince.value = province;
         }
-      }
-
-      if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
-        currentAvatarUrl.value =
-            "${user.avatarUrl}?t=${DateTime.now().millisecondsSinceEpoch}";
-      } else {
-        currentAvatarUrl.value = "";
       }
 
       // Đánh dấu đã load dữ liệu thành công
@@ -220,6 +245,7 @@ class ProfileController extends GetxController {
 
       homeController.completeUpload();
       selectedImagePath.value = '';
+      UserProfileController.clearCache();
 
       CustomAlert.showSuccess('profile_update_success'.tr);
 

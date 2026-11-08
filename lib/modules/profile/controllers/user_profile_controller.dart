@@ -220,15 +220,20 @@ class UserProfileController extends GetxController {
       userInfo.value = newUserInfo;
       isFollowing.value = newUserInfo.follow ?? false;
 
-      // Đồng bộ điểm uy tín và huy hiệu vào ProfileController và StorageService nếu là profile của chính mình
+      // Đồng bộ điểm uy tín, huy hiệu và avatar vào ProfileController và StorageService nếu là profile của chính mình
       if (isMyProfile) {
-        StorageService.to.saveUserReputation(
-          score: newUserInfo.reputationScore,
+        final fullAvatar = newUserInfo.fullAvatarUrl;
+        StorageService.to.saveUserInfo(
+          avatarUrl: fullAvatar,
+          reputationScore: newUserInfo.reputationScore,
           badge: newUserInfo.badge,
           canCreatePost: newUserInfo.canCreatePost,
         );
         if (Get.isRegistered<ProfileController>()) {
           final pc = Get.find<ProfileController>();
+          if (fullAvatar != null && fullAvatar.isNotEmpty) {
+            pc.currentAvatarUrl.value = fullAvatar;
+          }
           if (newUserInfo.reputationScore != null) {
             pc.reputationScore.value = newUserInfo.reputationScore!;
           }
