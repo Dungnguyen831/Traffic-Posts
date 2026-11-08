@@ -18,6 +18,7 @@ import '../../../data/repositories/traffic_post_repository.dart';
 import '../../../services/storage_service.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../map/controllers/map_controller.dart';
+import '../../profile/controllers/profile_controller.dart';
 import '../../profile/controllers/user_profile_controller.dart';
 import '../widgets/dashboard_filter_bottom_sheet.dart';
 import '../widgets/edit_post_bottom_sheet.dart';
@@ -119,12 +120,25 @@ class DashboardController extends GetxController {
       _followedStates.putIfAbsent(userId, () => false.obs);
 
   void _syncPostStates(List<TrafficPostModel> newPosts) {
+    final myId = currentUserId?.toString();
     for (final p in newPosts) {
       if (p.id == null) continue;
       likedState(p.id!).value = p.isLiked ?? false;
       likeCount(p.id!).value = p.likes ?? 0;
       if (p.userId != null) {
         followedState(p.userId!).value = p.isFollowedByCurrentUser ?? false;
+      }
+      // Đồng bộ avatar của chính mình lên ProfileController nếu chưa có
+      if (myId != null &&
+          p.userId == myId &&
+          p.fullAvatarUrl != null &&
+          p.fullAvatarUrl!.isNotEmpty &&
+          Get.isRegistered<ProfileController>()) {
+        final pc = Get.find<ProfileController>();
+        if (pc.currentAvatarUrl.value.isEmpty) {
+          pc.currentAvatarUrl.value = p.fullAvatarUrl!;
+          _storageService.saveUserInfo(avatarUrl: p.fullAvatarUrl);
+        }
       }
     }
   }

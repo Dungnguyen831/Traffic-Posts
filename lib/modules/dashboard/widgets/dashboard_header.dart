@@ -143,49 +143,50 @@ class DashboardHeader extends StatelessWidget {
                     width: 1,
                   ),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: isLoading
-                    ? Center(
-                        child: SizedBox(
-                          width: 16.w,
-                          height: 16.w,
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppTheme.primaryColor,
-                          ),
-                        ),
-                      )
-                    : (avatarUrl.isEmpty
-                          ? Icon(
-                              IconlyBroken.profile,
-                              size: 20.sp,
+                child: ClipOval(
+                  child: (isLoading && avatarUrl.isEmpty)
+                      ? Center(
+                          child: SizedBox(
+                            width: 16.w,
+                            height: 16.w,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
                               color: AppTheme.primaryColor,
-                            )
-                          : CachedNetworkImage(
-                              imageUrl: avatarUrl,
-                              fit: BoxFit.cover,
-                              width: 36.w,
-                              height: 36.w,
-                              memCacheWidth: 120,
-                              memCacheHeight: 120,
-                              fadeInDuration: Duration.zero,
-                              fadeOutDuration: Duration.zero,
-                              placeholder: (context, url) => Center(
-                                child: SizedBox(
-                                  width: 16.w,
-                                  height: 16.w,
-                                  child: const CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Icon(
+                            ),
+                          ),
+                        )
+                      : (avatarUrl.isEmpty
+                            ? Icon(
                                 IconlyBroken.profile,
                                 size: 20.sp,
                                 color: AppTheme.primaryColor,
-                              ),
-                            )),
+                              )
+                            : CachedNetworkImage(
+                                imageUrl: avatarUrl,
+                                fit: BoxFit.cover,
+                                width: 36.w,
+                                height: 36.w,
+                                memCacheWidth: 120,
+                                memCacheHeight: 120,
+                                fadeInDuration: Duration.zero,
+                                fadeOutDuration: Duration.zero,
+                                placeholder: (context, url) => Center(
+                                  child: SizedBox(
+                                    width: 16.w,
+                                    height: 16.w,
+                                    child: const CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Icon(
+                                  IconlyBroken.profile,
+                                  size: 20.sp,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              )),
+                ),
               );
             }),
           ),
