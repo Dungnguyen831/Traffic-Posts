@@ -11,6 +11,17 @@ class SuggestionChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final askedTexts = controller.messages
+        .where((m) => m.isUser)
+        .map((m) => m.text.trim())
+        .toSet();
+    final remaining = controller.suggestions
+        .where((s) => !askedTexts.contains(s.tr.trim()))
+        .toList();
+    final displayList = remaining.isNotEmpty
+        ? remaining
+        : controller.suggestions;
+
     return Padding(
       padding: EdgeInsets.only(top: 4.h, bottom: 8.h),
       child: Column(
@@ -32,7 +43,7 @@ class SuggestionChips extends StatelessWidget {
             child: Wrap(
               spacing: 8.w,
               runSpacing: 8.h,
-              children: controller.suggestions.map((s) {
+              children: displayList.map((s) {
                 return GestureDetector(
                   onTap: () => controller.sendMessage(s.tr),
                   child: Container(

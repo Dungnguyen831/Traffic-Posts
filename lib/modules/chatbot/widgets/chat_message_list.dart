@@ -16,7 +16,7 @@ class ChatMessageList extends StatelessWidget {
     return Obx(() {
       final msgs = controller.messages;
       final isTyping = controller.isTyping.value;
-      final showSuggestions = msgs.length <= 1 && !isTyping;
+      final showSuggestions = !isTyping;
       final extraItems = (isTyping ? 1 : 0) + (showSuggestions ? 1 : 0);
 
       return ListView.builder(

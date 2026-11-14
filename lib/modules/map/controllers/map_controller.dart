@@ -1103,7 +1103,6 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
       final target = DemoConfig.currentSimulatedPosition;
       _updateUserLocationMarker(target);
       animatedMapMove(target, 16.0);
-      CustomAlert.showSuccess('Đang hiển thị vị trí cố định (Web Demo)');
       return;
     }
 

@@ -208,6 +208,11 @@ Always detect the language of the user's latest message and write your entire re
     'chatbot_suggestion_3',
     'chatbot_suggestion_4',
     'chatbot_suggestion_5',
+    'chatbot_suggestion_6',
+    'chatbot_suggestion_7',
+    'chatbot_suggestion_8',
+    'chatbot_suggestion_9',
+    'chatbot_suggestion_10',
   ];
 
   @override
@@ -220,7 +225,11 @@ Always detect the language of the user's latest message and write your entire re
   void _initClient() {
     final rawKey = dotenv.env['GEMINI_API_KEY'] ?? '';
     final apiKey = rawKey.trim();
-    _hasApiKey = apiKey.isNotEmpty && apiKey != 'YOUR_GEMINI_API_KEY_HERE';
+    _hasApiKey =
+        !DemoConfig.isDemoMode &&
+        apiKey.isNotEmpty &&
+        apiKey != 'YOUR_GEMINI_API_KEY_HERE' &&
+        apiKey != 'DEMO_MODE';
     debugPrint('[Chatbot] hasApiKey=$_hasApiKey, keyLength=${apiKey.length}');
     if (_hasApiKey) {
       _client = GoogleAIClient(
@@ -245,9 +254,9 @@ Always detect the language of the user's latest message and write your entire re
     final trimmed = text.trim();
     if (trimmed.isEmpty || isTyping.value) return;
 
-    if (!_hasApiKey) {
+    if (DemoConfig.isDemoMode || !_hasApiKey) {
       if (DemoConfig.isDemoMode) {
-        _handleSimulatedResponse(trimmed);
+        await _handleSimulatedResponse(trimmed);
         return;
       }
       Get.snackbar(
@@ -407,57 +416,24 @@ Always detect the language of the user's latest message and write your entire re
       ),
     );
     textController.clear();
-    _scrollToBottom();
+    _scrollToBottom(force: true);
 
     isTyping.value = true;
     streamingText.value = '';
 
-    String reply;
-    final lower = text.toLowerCase();
-    if (lower.contains('phạt') ||
-        lower.contains('đèn đỏ') ||
-        lower.contains('tốc độ') ||
-        lower.contains('lỗi')) {
-      reply =
-          'Theo Nghị định 100/2019/NĐ-CP (sửa đổi, bổ sung bởi NĐ 123/2021/NĐ-CP):\n'
-          '• Vượt đèn đỏ: Xe máy phạt 800.000đ - 1.000.000đ; Ô tô phạt 4.000.000đ - 6.000.000đ (tước GPLX 1-3 tháng).\n'
-          '• Quá tốc độ: Tùy mức vượt từ 5km/h đến trên 35km/h, phạt từ 800.000đ đến 12.000.000đ đối với ô tô.\n'
-          '• Không đội MBH: Phạt 400.000đ - 600.000đ.\n'
-          '👉 Bạn có thể dùng tính năng "Tra cứu phạt nguội" trên màn hình chính để kiểm tra biển số xe.';
-    } else if (lower.contains('tắc') ||
-        lower.contains('ùn') ||
-        lower.contains('đường') ||
-        lower.contains('kẹt')) {
-      reply =
-          'Tình hình giao thông hiện tại (Khu vực trung tâm Kim Mã - Cầu Giấy):\n'
-          '• Trục Kim Mã - Liễu Giai: Lưu lượng đông, các phương tiện di chuyển chậm.\n'
-          '• Đường Cầu Giấy: Giao thông ổn định, tốc độ trung bình 35 km/h.\n'
-          '• Khuyến nghị: Bạn có thể mở tab Bản đồ để theo dõi các sự kiện ùn tắc và cảnh báo thời gian thực.';
-    } else if (lower.contains('cứu hộ') ||
-        lower.contains('sos') ||
-        lower.contains('khẩn cấp') ||
-        lower.contains('tai nạn')) {
-      reply =
-          'Trong trường hợp khẩn cấp trên đường:\n'
-          '1. Gọi ngay 115 (Cứu thương) hoặc 113 (Cảnh sát giao thông).\n'
-          '2. Mở tab Cứu hộ (SOS) trên app và bấm "Phát tín hiệu cứu hộ" để gửi vị trí hiện tại kèm số liên hệ người thân.\n'
-          '3. Bật đèn khẩn cấp (hazard) và đặt cảnh báo phản quang cách đuôi xe tối thiểu 50m.';
-    } else {
-      reply =
-          'Xin chào! Tôi là Trợ lý giao thông ảo Traffic App (Phiên bản Web Demo).\n\n'
-          'Tôi có thể hỗ trợ bạn:\n'
-          '• Tra cứu quy định xử phạt vi phạm giao thông đường bộ\n'
-          '• Cập nhật thông tin điểm ùn tắc, ngập lụt tại khu vực trung tâm\n'
-          '• Hướng dẫn cách xử lý sự cố va chạm và phát tín hiệu SOS cứu hộ.\n\n'
-          'Hãy thử đặt câu hỏi như: "Mức phạt vượt đèn đỏ xe máy?", "Đường Kim Mã có tắc không?" nhé!';
-    }
+    final String reply = _buildSimulatedReply(text);
 
-    // Mô phỏng hiệu ứng typing gõ chữ mượt mà
+    // Mô phỏng hiệu ứng typing gõ chữ mượt mà theo cụm từ
     final words = reply.split(' ');
     String current = '';
-    for (int i = 0; i < words.length; i++) {
-      await Future.delayed(const Duration(milliseconds: 25));
-      current += (i == 0 ? '' : ' ') + words[i];
+    const int chunkSize = 3;
+    for (int i = 0; i < words.length; i += chunkSize) {
+      if (!isTyping.value) return;
+      await Future.delayed(const Duration(milliseconds: 18));
+      if (!isTyping.value) return;
+      final end = (i + chunkSize < words.length) ? i + chunkSize : words.length;
+      final chunk = words.sublist(i, end).join(' ');
+      current += (current.isEmpty ? '' : ' ') + chunk;
       streamingText.value = current;
       _scrollToBottom();
     }
@@ -472,7 +448,381 @@ Always detect the language of the user's latest message and write your entire re
     );
     isTyping.value = false;
     streamingText.value = '';
-    _scrollToBottom();
+    _scrollToBottom(force: true);
+  }
+
+  String _buildSimulatedReply(String text) {
+    final lower = text.toLowerCase();
+    final bool isEnglish =
+        lower.contains('how ') ||
+        lower.contains('what ') ||
+        lower.contains('penalt') ||
+        lower.contains('fine') ||
+        lower.contains('traffic sign') ||
+        lower.contains('red light') ||
+        lower.contains('alcohol') ||
+        lower.contains('speeding') ||
+        lower.contains('helmet') ||
+        lower.contains('wrong lane') ||
+        lower.contains('accident') ||
+        lower.contains('12-point') ||
+        lower.contains('stuck in traffic');
+
+    // 1. Kiểm tra phạt nguội / Đăng ký thông báo biển số
+    if (lower.contains('phạt nguội') ||
+        lower.contains('tra cứu') ||
+        lower.contains('biển số') ||
+        lower.contains('check traffic fines') ||
+        lower.contains('license plate')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'You can look up traffic fines and subscribe to automatic license plate violation alerts directly in **Traffic App**.\n\n'
+            '**How to check on Traffic App**\n'
+            '1. Open the **Discovery (Tra cứu)** tab on the bottom navigation bar.\n'
+            '2. Select your vehicle type (**Car**, **Motorcycle**, or **Electric bike**).\n'
+            '3. Enter your license plate (e.g., `30A-123.45` or `29B1-678.90`) and tap **Search**.\n'
+            '4. Tap the **Bell icon (🔔)** at the top right to register your license plate for automatic violation push notifications.\n\n'
+            '**Note**\n'
+            '- Try demo plates `30A12345` (has unpaid & paid records) or `51G99999` (clean record) in the **Discovery** tab!';
+      }
+      return '**Kết luận**\n'
+          'Bạn có thể kiểm tra phạt nguội và đăng ký nhận thông báo vi phạm tự động theo biển số ngay trên **Traffic App**.\n\n'
+          '**Hướng dẫn thực hiện trên ứng dụng**\n'
+          '1. Mở tab **Tra cứu** ở thanh điều hướng phía dưới màn hình.\n'
+          '2. Chọn loại phương tiện (**Ô tô**, **Xe máy** hoặc **Xe máy điện**).\n'
+          '3. Nhập biển số xe (ví dụ: `30A-123.45` hoặc `29B1-678.90`) và nhấn **Tra cứu**.\n'
+          '4. Nhấn vào **biểu tượng Chuông (🔔)** góc trên bên phải để đăng ký nhận thông báo tự động khi biển số phát sinh lỗi phạt nguội mới.\n\n'
+          '**Mẹo trải nghiệm Bản Demo**\n'
+          '- Bạn có thể thử nhập biển số mẫu `30A12345` (có dữ liệu vi phạm mẫu) hoặc biển số bất kỳ tại tab **Tra cứu** để xem chi tiết biên bản!';
+    }
+
+    // 2. Mức phạt vượt đèn đỏ / đèn vàng
+    if (lower.contains('đèn đỏ') ||
+        lower.contains('đèn vàng') ||
+        lower.contains('tín hiệu đèn') ||
+        lower.contains('red light')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'Failing to obey traffic light signals (running a red or yellow light) results in heavy monetary fines and driving license point deductions.\n\n'
+            '**Legal Basis**\n'
+            '- Point b Clause 9 Article 6 & Point c Clause 7 Article 7 of **Decree 168/2024/NĐ-CP** (effective from 01/01/2025).\n\n'
+            '**Penalties** *(assuming no accident caused)*\n'
+            '- **Cars**: Fine from **18,000,000 – 20,000,000 VND**; deduct **04 points** from the driving license *(if causing an accident: **20,000,000 – 22,000,000 VND**, deduct **10 points**)*.\n'
+            '- **Motorcycles / Mopeds**: Fine from **4,000,000 – 6,000,000 VND**; deduct **04 points** from the driving license *(if causing an accident: **10,000,000 – 14,000,000 VND**, deduct **10 points**)*.\n'
+            '- **Bicycles / Non-motorized vehicles**: Fine from **150,000 – 250,000 VND**.\n\n'
+            '**Note**\n'
+            '- Running a yellow light when youhave not yet crossed the stop line is penalized the same as running a red light.';
+      }
+      return '**Kết luận**\n'
+          'Hành vi không chấp hành hiệu lệnh của đèn tín hiệu giao thông (vượt đèn đỏ, đèn vàng) bị xử phạt tiền ở mức rất nghiêm khắc kèm trừ điểm Giấy phép lái xe (GPLX).\n\n'
+          '**Căn cứ pháp lý**\n'
+          '- Điểm b Khoản 9 Điều 6 và Điểm c Khoản 7 Điều 7 **Nghị định 168/2024/NĐ-CP** (áp dụng theo Luật TTATGT đường bộ 36/2024/QH15).\n\n'
+          '**Mức xử phạt** *(giả định không gây tai nạn)*\n'
+          '- **Đối với Ô tô**: Phạt tiền từ **18.000.000đ – 20.000.000đ**, trừ **04 điểm** GPLX *(nếu gây tai nạn giao thông: phạt **20.000.000đ – 22.000.000đ**, trừ **10 điểm** GPLX)*.\n'
+          '- **Đối với Xe máy (mô tô, xe gắn máy)**: Phạt tiền từ **4.000.000đ – 6.000.000đ**, trừ **04 điểm** GPLX *(nếu gây tai nạn giao thông: phạt **10.000.000đ – 14.000.000đ**, trừ **10 điểm** GPLX)*.\n'
+          '- **Đối với Xe đạp, xe thô sơ**: Phạt tiền từ **150.000đ – 250.000đ**.\n\n'
+          '**Lưu ý**\n'
+          '- Khi đèn chuyển vàng, người lái xe phải dừng lại trước vạch dừng; trường hợp đã đi quá vạch dừng hoặc quá gần vạch dừng nếu dừng lại thấy nguy hiểm thì được đi tiếp.';
+    }
+
+    // 3. Mức phạt nồng độ cồn
+    if (lower.contains('nồng độ cồn') ||
+        lower.contains('rượu') ||
+        lower.contains('bia') ||
+        lower.contains('thổi cồn') ||
+        lower.contains('alcohol') ||
+        lower.contains('drunk')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'Vietnam applies a **zero-tolerance policy** for alcohol concentration while driving. Any detected alcohol level results in fines, point deductions, or license revocation.\n\n'
+            '**Legal Basis**\n'
+            '- Article 6 (Cars) and Article 7 (Motorcycles) of **Decree 168/2024/NĐ-CP**.\n\n'
+            '**Penalties by Alcohol Level**\n'
+            '1. **Level 1** *(≤ 50 mg/100ml blood or ≤ 0.25 mg/L breath)*:\n'
+            '   - **Motorcycles**: **2,000,000 – 3,000,000 VND**, deduct **04 points**.\n'
+            '   - **Cars**: **6,000,000 – 8,000,000 VND**, deduct **04 points**.\n'
+            '2. **Level 2** *(> 50 to 80 mg/100ml blood or > 0.25 to 0.4 mg/L breath)*:\n'
+            '   - **Motorcycles**: **6,000,000 – 8,000,000 VND**, deduct **10 points**.\n'
+            '   - **Cars**: **18,000,000 – 20,000,000 VND**, deduct **10 points**.\n'
+            '3. **Level 3** *(> 80 mg/100ml blood or > 0.4 mg/L breath, or refusing test)*:\n'
+            '   - **Motorcycles**: **8,000,000 – 10,000,000 VND**, **revoke license for 22 – 24 months**.\n'
+            '   - **Cars**: **30,000,000 – 40,000,000 VND**, **revoke license for 22 – 24 months**.\n\n'
+            '**Note**\n'
+            '- Law enforcement may also temporarily impound the vehicle for up to **07 working days**.';
+      }
+      return '**Kết luận**\n'
+          'Pháp luật Việt Nam nghiêm cấm tuyệt đối điều khiển phương tiện khi trong máu hoặc hơi thở có nồng độ cồn (**đã uống rượu bia – không lái xe**).\n\n'
+          '**Căn cứ pháp lý**\n'
+          '- Điều 6 (Ô tô) và Điều 7 (Mô tô, xe gắn máy) **Nghị định 168/2024/NĐ-CP**.\n\n'
+          '**Mức xử phạt chi tiết theo 3 khung**\n'
+          '1. **Mức 1** *(Chưa vượt quá 50 mg/100ml máu hoặc 0,25 mg/lít khí thở)*:\n'
+          '   - **Xe máy**: Phạt **2.000.000đ – 3.000.000đ**, trừ **04 điểm** GPLX.\n'
+          '   - **Ô tô**: Phạt **6.000.000đ – 8.000.000đ**, trừ **04 điểm** GPLX.\n'
+          '2. **Mức 2** *(Vượt quá 50 đến 80 mg/100ml máu hoặc 0,25 đến 0,4 mg/lít khí thở)*:\n'
+          '   - **Xe máy**: Phạt **6.000.000đ – 8.000.000đ**, trừ **10 điểm** GPLX.\n'
+          '   - **Ô tô**: Phạt **18.000.000đ – 20.000.000đ**, trừ **10 điểm** GPLX.\n'
+          '3. **Mức 3** *(Vượt quá 80 mg/100ml máu hoặc 0,4 mg/lít khí thở, hoặc không chấp hành kiểm tra)*:\n'
+          '   - **Xe máy**: Phạt **8.000.000đ – 10.000.000đ**, **tước GPLX 22 – 24 tháng**.\n'
+          '   - **Ô tô**: Phạt **30.000.000đ – 40.000.000đ**, **tước GPLX 22 – 24 tháng**.\n\n'
+          '**Lưu ý**\n'
+          '- Tất cả các mức vi phạm nồng độ cồn đều bị **tạm giữ phương tiện đến 07 ngày làm việc**.';
+    }
+
+    // 4. Lỗi chạy quá tốc độ
+    if (lower.contains('tốc độ') ||
+        lower.contains('quá tốc độ') ||
+        lower.contains('bắn tốc độ') ||
+        lower.contains('speed')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'Speeding penalties depend on how many km/h you exceed the posted limit and the vehicle type.\n\n'
+            '**Legal Basis**\n'
+            '- Article 6 & Article 7 of **Decree 168/2024/NĐ-CP**.\n\n'
+            '**Penalties**\n'
+            '- **Exceeding by 05 to < 10 km/h**:\n'
+            '  + Motorcycles: **400,000 – 600,000 VND** | Cars: **800,000 – 1,000,000 VND**.\n'
+            '- **Exceeding by 10 to 20 km/h**:\n'
+            '  + Motorcycles: **800,000 – 1,000,000 VND** | Cars: **4,000,000 – 6,000,000 VND** (deduct **02 points**).\n'
+            '- **Exceeding by > 20 to 35 km/h**:\n'
+            '  + Motorcycles: **4,000,000 – 6,000,000 VND** (deduct **04 points**) | Cars: **6,000,000 – 8,000,000 VND** (deduct **04 points**).\n'
+            '- **Exceeding by > 35 km/h**:\n'
+            '  + Motorcycles: **6,000,000 – 8,000,000 VND** (deduct **04 points**) | Cars: **12,000,000 – 14,000,000 VND** (deduct **06 points**).';
+      }
+      return '**Kết luận**\n'
+          'Mức phạt chạy quá tốc độ quy định được chia thành 4 nấc tùy theo mức tốc độ vượt (từ 05 km/h đến trên 35 km/h).\n\n'
+          '**Căn cứ pháp lý**\n'
+          '- Điều 6 (Ô tô) và Điều 7 (Mô tô, xe gắn máy) **Nghị định 168/2024/NĐ-CP**; Thông tư 38/2024/TT-BGTVT về tốc độ và khoảng cách an toàn.\n\n'
+          '**Mức xử phạt chi tiết**\n'
+          '- **Vượt từ 05 km/h đến dưới 10 km/h**:\n'
+          '  + **Xe máy**: Phạt **400.000đ – 600.000đ**.\n'
+          '  + **Ô tô**: Phạt **800.000đ – 1.000.000đ**.\n'
+          '- **Vượt từ 10 km/h đến 20 km/h**:\n'
+          '  + **Xe máy**: Phạt **800.000đ – 1.000.000đ**.\n'
+          '  + **Ô tô**: Phạt **4.000.000đ – 6.000.000đ**, trừ **02 điểm** GPLX.\n'
+          '- **Vượt trên 20 km/h đến 35 km/h**:\n'
+          '  + **Xe máy**: Phạt **4.000.000đ – 6.000.000đ**, trừ **04 điểm** GPLX.\n'
+          '  + **Ô tô**: Phạt **6.000.000đ – 8.000.000đ**, trừ **04 điểm** GPLX.\n'
+          '- **Vượt trên 35 km/h**:\n'
+          '  + **Xe máy**: Phạt **6.000.000đ – 8.000.000đ**, trừ **04 điểm** GPLX.\n'
+          '  + **Ô tô**: Phạt **12.000.000đ – 14.000.000đ**, trừ **06 điểm** GPLX.\n\n'
+          '**Lưu ý**\n'
+          '- Trong khu vực đông dân cư (biển `R.420`), tốc độ tối đa cho phép thường là **60 km/h** (đường đôi/1 chiều ≥ 2 làn) hoặc **50 km/h** (đường 2 chiều).';
+    }
+
+    // 5. Đi sai làn đường / Đè vạch kẻ đường
+    if (lower.contains('sai làn') ||
+        lower.contains('làn đường') ||
+        lower.contains('đè vạch') ||
+        lower.contains('vạch kẻ') ||
+        lower.contains('wrong lane') ||
+        lower.contains('crossing line')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'Vietnamese traffic law clearly distinguishes between **"failing to obey road markings/lane arrows"** and **"driving in the wrong lane"**.\n\n'
+            '**Legal Basis**\n'
+            '- Article 6 & Article 7 of **Decree 168/2024/NĐ-CP**.\n\n'
+            '**Penalties**\n'
+            '1. **Crossing solid lines / disobeying lane direction arrows (`R.411`)**:\n'
+            '   - **Motorcycles**: **200,000 – 400,000 VND**.\n'
+            '   - **Cars**: **400,000 – 600,000 VND**.\n'
+            '2. **Driving in the wrong lane (lane designated for another vehicle type or opposite direction)**:\n'
+            '   - **Motorcycles**: **600,000 – 800,000 VND** *(if causing an accident: **10,000,000 – 14,000,000 VND**, deduct **10 points**)*.\n'
+            '   - **Cars**: **4,000,000 – 6,000,000 VND**, deduct **02 points** *(if causing an accident: **20,000,000 – 22,000,000 VND**, deduct **10 points**)*.\n'
+            '3. **Driving motorcycles on the sidewalk** *(except to enter a house/office)*:\n'
+            '   - **Motorcycles**: **4,000,000 – 6,000,000 VND**, deduct **02 points**.';
+      }
+      return '**Kết luận**\n'
+          'Bạn cần phân biệt rõ 2 lỗi rất dễ nhầm lẫn: **Không chấp hành vạch kẻ đường (đè vạch, đi sai mũi tên)** và **Đi sai làn đường quy định**.\n\n'
+          '**Căn cứ pháp lý**\n'
+          '- Điều 6 và Điều 7 **Nghị định 168/2024/NĐ-CP**.\n\n'
+          '**Mức xử phạt chi tiết**\n'
+          '1. **Lỗi không chấp hành hiệu lệnh vạch kẻ đường** *(đè vạch liền, đi thẳng ở làn chỉ cho rẽ trái theo biển `R.411`)*:\n'
+          '   - **Xe máy**: Phạt **200.000đ – 400.000đ**.\n'
+          '   - **Ô tô**: Phạt **400.000đ – 600.000đ**.\n'
+          '2. **Lỗi đi không đúng làn đường, phần đường quy định (Đi sai làn)** *(ví dụ: xe máy đi vào làn dành riêng cho ô tô có biển phân làn `R.412`)*:\n'
+          '   - **Xe máy**: Phạt **600.000đ – 800.000đ** *(nếu gây tai nạn: phạt **10.000.000đ – 14.000.000đ**, trừ **10 điểm** GPLX)*.\n'
+          '   - **Ô tô**: Phạt **4.000.000đ – 6.000.000đ**, trừ **02 điểm** GPLX *(nếu gây tai nạn: phạt **20.000.000đ – 22.000.000đ**, trừ **10 điểm** GPLX)*.\n'
+          '3. **Lỗi điều khiển xe máy đi trên vỉa hè** *(trừ trường hợp đi qua vỉa hè để vào nhà/cơ quan)*:\n'
+          '   - **Xe máy**: Phạt **4.000.000đ – 6.000.000đ**, trừ **02 điểm** GPLX.';
+    }
+
+    // 6. Không đội mũ bảo hiểm
+    if (lower.contains('mũ bảo hiểm') ||
+        lower.contains('mbh') ||
+        lower.contains('cài quai') ||
+        lower.contains('helmet')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'Both riders and passengers on motorcycles, mopeds, and electric bikes must wear a standard helmet with the strap properly fastened.\n\n'
+            '**Legal Basis**\n'
+            '- Point h, i Clause 2 Article 7 of **Decree 168/2024/NĐ-CP**.\n\n'
+            '**Penalties**\n'
+            '- **Rider or passenger not wearing a helmet (or unfastened strap)**: Fine from **400,000 – 600,000 VND** per violating person.\n'
+            '- **If both rider and passenger do not wear helmets**: Total fine from **800,000 – 1,200,000 VND**.\n\n'
+            '**Note**\n'
+            '- Exemptions apply when transporting a patient for emergency medical care, children under **06 years old**, or escorting lawbreakers.';
+      }
+      return '**Kết luận**\n'
+          'Người điều khiển và người ngồi trên xe mô tô, xe gắn máy, xe máy điện bắt buộc phải đội mũ bảo hiểm và cài quai đúng quy cách.\n\n'
+          '**Căn cứ pháp lý**\n'
+          '- Điểm h, Điểm i Khoản 2 Điều 7 **Nghị định 168/2024/NĐ-CP**.\n\n'
+          '**Mức xử phạt**\n'
+          '- **Người điều khiển không đội MBH** (hoặc đội nhưng không cài quai đúng quy cách): Phạt **400.000đ – 600.000đ**.\n'
+          '- **Chở người ngồi trên xe không đội MBH**: Phạt **400.000đ – 600.000đ**.\n'
+          '- **Trường hợp cả người lái và người ngồi sau đều vi phạm**: Tổng mức phạt cho cả 2 hành vi là **800.000đ – 1.200.000đ**.\n\n'
+          '**Lưu ý**\n'
+          '- Không xử phạt khi chở người bệnh đi cấp cứu, trẻ em **dưới 06 tuổi**, hoặc áp giải người có hành vi vi phạm pháp luật.';
+    }
+
+    // 7. Quy định trừ 12 điểm giấy phép lái xe & Điểm uy tín
+    if (lower.contains('12 điểm') ||
+        lower.contains('trừ điểm') ||
+        lower.contains('giấy phép lái xe') ||
+        lower.contains('gplx') ||
+        lower.contains('bằng lái') ||
+        lower.contains('uy tín') ||
+        lower.contains('12-point') ||
+        lower.contains('point deduction') ||
+        lower.contains('driving license')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'Each Vietnamese Driving License is allocated **12 points per year** under the Law on Road Traffic Order and Safety 2024.\n\n'
+            '**Legal Basis**\n'
+            '- Article 58 of **Law 36/2024/QH15** and **Decree 168/2024/NĐ-CP**.\n\n'
+            '**Key Rules**\n'
+            '- **Point Scale**: Each license starts with **12 points**. Violations deduct **2, 4, 6, or 10 points** depending on severity.\n'
+            '- **Automatic Restoration**: If at least 01 point remains and no further points are deducted within **12 months** from the last deduction, all **12 points** are automatically restored.\n'
+            '- **When all 12 points are deducted**: You are prohibited from driving vehicles under that license. After at least **06 months**, you must pass a traffic law knowledge test organized by the Traffic Police to restore 12 points.';
+      }
+      return '**Kết luận**\n'
+          'Theo Luật Trật tự, an toàn giao thông đường bộ 2024, mỗi Giấy phép lái xe (GPLX) có quỹ **12 điểm/năm**.\n\n'
+          '**Căn cứ pháp lý**\n'
+          '- Điều 58 **Luật TTATGT đường bộ 36/2024/QH15** và **Nghị định 168/2024/NĐ-CP**.\n\n'
+          '**Cơ chế trừ điểm & phục hồi điểm GPLX**\n'
+          '1. **Mức điểm trừ**: Tùy tính chất lỗi vi phạm, người lái xe bị trừ **02, 04, 06 hoặc 10 điểm** ngay khi quyết định xử phạt có hiệu lực.\n'
+          '2. **Tự động phục hồi 12 điểm**: Nếu GPLX chưa bị trừ hết điểm và không bị trừ thêm điểm nào trong thời hạn **12 tháng** kể từ ngày bị trừ điểm gần nhất thì được **phục hồi đủ 12 điểm**.\n'
+          '3. **Khi bị trừ hết 12 điểm**:\n'
+          '   - Người có GPLX không được điều khiển phương tiện tham gia giao thông theo GPLX đó.\n'
+          '   - Sau ít nhất **06 tháng** kể từ ngày bị trừ hết điểm, người lái xe phải tham gia **kiểm tra nội dung kiến thức pháp luật về TTATGT đường bộ** do Cục CSGT tổ chức; nếu đạt yêu cầu sẽ được phục hồi đủ **12 điểm**.\n\n'
+          '**Lưu ý trên Traffic App**\n'
+          '- Ngoài điểm GPLX, bạn còn có **Điểm uy tín cộng đồng** trong mục **Hồ sơ / Bảng xếp hạng** khi đóng góp bài đăng giao thông chính xác!';
+    }
+
+    // 8. Biển báo giao thông cần biết
+    if (lower.contains('biển báo') ||
+        lower.contains('biển cấm') ||
+        lower.contains('hiệu lệnh') ||
+        lower.contains('traffic sign')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'Road traffic signs in Vietnam are standardized into **5 main groups** under National Technical Regulation **QCVN 41 / Circular 51/2024/TT-BGTVT**.\n\n'
+            '**5 Essential Sign Groups**\n'
+            '1. **Prohibitory Signs (Biển báo cấm)**: Circular, **red border, white background** (e.g., `P.102` No Entry, `P.123a` No Left Turn, `P.130` No Stopping & Parking).\n'
+            '2. **Warning Signs (Biển báo nguy hiểm)**: Equilateral triangle, **red border, yellow background, black symbol** (e.g., sharp curves, pedestrian crossing, road work).\n'
+            '3. **Mandatory Signs (Biển hiệu lệnh)**: Circular, **blue background, white symbol** (e.g., `R.301` Mandatory direction, `R.412` Dedicated vehicle lanes).\n'
+            '4. **Guide Signs (Biển chỉ dẫn)**: Rectangular/square, **blue background** (e.g., `R.420` Start of densely populated area – speed limit 50–60 km/h, `R.411` Lane direction arrows).\n'
+            '5. **Supplementary Signs (Biển phụ)**: Rectangular white/black plates placed below main signs to specify vehicle types or time windows.';
+      }
+      return '**Kết luận**\n'
+          'Hệ thống biển báo hiệu đường bộ Việt Nam (theo **QCVN 41** & **Thông tư 51/2024/TT-BGTVT**) gồm **5 nhóm chính** người lái xe cần nắm vững:\n\n'
+          '**1. Biển báo cấm (Mã P)**\n'
+          '- **Đặc điểm**: Hình tròn, viền đỏ, nền trắng, hình vẽ màu đen.\n'
+          '- **Biển quan trọng**: `P.102` (Cấm đi ngược chiều), `P.123a/b` (Cấm rẽ trái/phải), `P.124` (Cấm quay đầu), `P.130` (Cấm dừng và đỗ xe – 2 gạch chéo), `P.131` (Cấm đỗ xe – 1 gạch chéo).\n\n'
+          '**2. Biển báo nguy hiểm và cảnh báo (Mã W)**\n'
+          '- **Đặc điểm**: Hình tam giác đều, viền đỏ, nền vàng, hình vẽ đen.\n'
+          '- **Ý nghĩa**: Cảnh báo trước các tình huống nguy hiểm (giao nhau với đường ưu tiên, đường hẹp, trẻ em, công trường) để chủ động giảm tốc.\n\n'
+          '**3. Biển hiệu lệnh (Mã R)**\n'
+          '- **Đặc điểm**: Hình tròn, nền xanh lam, hình vẽ trắng.\n'
+          '- **Biển quan trọng**: `R.301` (Hướng đi phải theo), `R.412` (Làn đường dành riêng cho từng loại xe – đi sai bị tính lỗi **sai làn**).\n\n'
+          '**4. Biển chỉ dẫn (Mã I / R.4xx)**\n'
+          '- **Đặc điểm**: Hình chữ nhật hoặc hình vuông, nền xanh lam.\n'
+          '- **Biển quan trọng**: `R.420` (Bắt đầu khu đông dân cư – giới hạn tốc độ 50–60 km/h), `R.421` (Hết khu đông dân cư), `R.411` (Hướng đi trên mỗi làn đường theo vạch kẻ).\n\n'
+          '**5. Biển phụ (Mã S)**\n'
+          '- Đặt dưới biển chính để bổ sung phạm vi hiệu lực, khung giờ cấm hoặc loại phương tiện áp dụng.';
+    }
+
+    // 9. Tắc đường / Tình hình giao thông
+    if (lower.contains('tắc') ||
+        lower.contains('ùn') ||
+        lower.contains('kẹt') ||
+        lower.contains('ngập') ||
+        lower.contains('stuck in traffic') ||
+        lower.contains('traffic jam')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'When encountering traffic congestion, stay in your proper lane and use **Traffic App\'s Real-time Map** to find alternative routes.\n\n'
+            '**Current Area Traffic Highlights (Web Demo)**\n'
+            '- **Kim Mã – Liễu Giai Intersection**: Heavy traffic volume (`#ketxe`), moving slowly at ~15 km/h.\n'
+            '- **Nguyễn Trãi – Khuất Duy Tiến Underpass**: Minor collision reported (`#tainan`), authorities are regulating traffic.\n'
+            '- **Thái Hà – Chùa Bộc**: Localized waterlogging (`#ngaplutnuoc`), motorcycles should avoid the inner lane.\n\n'
+            '**What you should do**\n'
+            '1. Open the **Map (Bản đồ)** tab and filter by `#ketxe` or radius `1km – 5km` to inspect nearby congestion clusters.\n'
+            '2. **Never drive on the sidewalk** (fine of **4,000,000 – 6,000,000 VND** for motorcycles under Decree 168/2024/NĐ-CP) or enter the emergency lane on expressways.\n'
+            '3. Share a photo report via the **Camera** tab to alert other drivers and earn **+5 reputation points**!';
+      }
+      return '**Kết luận**\n'
+          'Khi gặp ùn tắc giao thông, bạn nên giữ đúng làn đường, tuân thủ điều tiết của CSGT và kiểm tra lộ trình thay thế trên tab **Bản đồ**.\n\n'
+          '**Tình hình giao thông nổi bật (Dữ liệu Bản đồ Demo)**\n'
+          '- **Nút giao Kim Mã – Liễu Giai**: Lưu lượng phương tiện rất đông (`#ketxe`), di chuyển chậm ~15 km/h.\n'
+          '- **Hầm chui Nguyễn Trãi – Khuất Duy Tiến**: Có va chạm nhẹ (`#tainan`), lực lượng chức năng đang phân luồng.\n'
+          '- **Phố Thái Hà – Chùa Bộc**: Có điểm ngập cục bộ (`#ngaplutnuoc`), xe máy nên hạn chế đi sát lề phải.\n\n'
+          '**Kinh nghiệm & Lưu ý pháp lý khi tắc đường**\n'
+          '1. **Mở tab Bản đồ**: Bấm vào bộ lọc `#ketxe`, `#ngaplutnuoc` hoặc lọc bán kính `1km – 5km` để chọn hướng rẽ tránh điểm nghẽn.\n'
+          '2. **Tuyệt đối không leo vỉa hè**: Theo NĐ 168/2024/NĐ-CP, xe máy đi trên vỉa hè bị phạt **4.000.000đ – 6.000.000đ** và trừ **02 điểm** GPLX.\n'
+          '3. **Không đi vào làn khẩn cấp trên cao tốc**: Ô tô vi phạm bị phạt **4.000.000đ – 6.000.000đ** và trừ **02 điểm** GPLX.\n'
+          '4. **Đóng góp cảnh báo**: Bạn có thể chụp ảnh tại tab **Camera** kèm hashtag `#ketxe` để nhận ngay **+5 điểm uy tín**!';
+    }
+
+    // 10. Tai nạn / Cứu hộ SOS khẩn cấp
+    if (lower.contains('tai nạn') ||
+        lower.contains('va chạm') ||
+        lower.contains('cứu hộ') ||
+        lower.contains('sos') ||
+        lower.contains('khẩn cấp') ||
+        lower.contains('accident') ||
+        lower.contains('emergency')) {
+      if (isEnglish) {
+        return '**Conclusion**\n'
+            'If a traffic accident or breakdown occurs, prioritize human safety, place hazard warnings immediately, and broadcast an **SOS signal** on **Traffic App**.\n\n'
+            '**5-Step Emergency Protocol**\n'
+            '1. **Turn on Hazard Lights & Place Warnings**: Activate hazard flashers and place reflective warning triangles at least **50m** behind your vehicle (**100m** on expressways).\n'
+            '2. **Call Emergency Services**: Dial **115** (Medical Emergency) if anyone is injured, and **113** (Traffic Police).\n'
+            '3. **Broadcast SOS on Traffic App**: Tap the red **SOS** button on the Home or Map screen and select **"Broadcast SOS"** to share your live GPS coordinates with nearby drivers and your trusted contact.\n'
+            '4. **Document the Scene**: Take photos of vehicle positions, license plates, and skid marks before moving vehicles.\n'
+            '5. **Legal Duty**: Never flee the scene or refuse to assist injured victims (fleeing an accident carries a fine of **16,000,000 – 18,000,000 VND** and **06 points** deduction, or criminal liability).';
+      }
+      return '**Kết luận**\n'
+          'Khi xảy ra tai nạn hoặc sự cố khẩn cấp trên đường, ưu tiên hàng đầu là đảm bảo an toàn tính mạng, đặt cảnh báo từ xa và phát tín hiệu **SOS Cứu hộ**.\n\n'
+          '**Quy trình 5 bước xử lý chuẩn an toàn & pháp luật**\n'
+          '1. **Bật đèn khẩn cấp & Đặt cảnh báo**: Bật đèn Hazard và đặt biển tam giác phản quang cách đuôi xe tối thiểu **50m** (trên cao tốc tối thiểu **100m**).\n'
+          '2. **Gọi cấp cứu & lực lượng chức năng**: Gọi ngay **115** (Cấp cứu y tế) nếu có người bị thương và **113** (Cảnh sát giao thông).\n'
+          '3. **Phát tín hiệu SOS trên Traffic App**: Nhấn nút **Trợ giúp khẩn cấp (SOS)** và chọn **"Phát tín hiệu cứu hộ"** để ghim tọa độ Radar đỏ lên Bản đồ thời gian thực và gọi nhanh cho người thân.\n'
+          '4. **Giữ hiện trường & Chụp ảnh**: Chụp lại vị trí xe, biển số, vạch kẻ đường làm căn cứ giải quyết hoặc giám định bảo hiểm.\n'
+          '5. **Lưu ý pháp lý (NĐ 168/2024/NĐ-CP)**: Hành vi gây tai nạn rồi bỏ chạy hoặc không cứu giúp người bị nạn bị phạt tới **16.000.000đ – 18.000.000đ**, trừ **06 điểm** GPLX (hoặc truy cứu trách nhiệm hình sự).';
+    }
+
+    // Câu trả lời mặc định khi người dùng hỏi chung chung
+    if (isEnglish) {
+      return 'Hello! I am the **AI Traffic Assistant** of **Traffic App** (Web Demo).\n\n'
+          'I can help you look up **Decree 168/2024/NĐ-CP** traffic penalties and guide you through the app:\n'
+          '- 🚦 **Fine Lookup**: Check license plate fines & subscribe to alerts\n'
+          '- 📋 **Red Light Penalties**: 4–6M VND (motorcycles), 18–20M VND (cars)\n'
+          '- 🍺 **Alcohol Limits**: 3 penalty tiers & license point deductions\n'
+          '- ⚡ **Speeding & Wrong Lane**: Detailed fine brackets & road markings\n'
+          '- 🪪 **12-Point License System**: Deduction & restoration rules\n'
+          '- 🚗 **Emergency SOS & Traffic Signs**: Step-by-step safety guides\n\n'
+          '👉 Tap any of the **Quick Ask** chips below or type your question to get started!';
+    }
+
+    return 'Xin chào! Tôi là **Trợ lý Giao thông AI** của **Traffic App** (Phiên bản Web Demo).\n\n'
+        'Tôi có thể tư vấn chi tiết quy định pháp luật giao thông mới nhất (**Luật TTATGT đường bộ 2024 & Nghị định 168/2024/NĐ-CP**):\n'
+        '- 🚦 **Tra cứu phạt nguội & Đăng ký theo dõi biển số xe**\n'
+        '- 📋 **Mức phạt vượt đèn đỏ**: Xe máy **4 – 6 triệu**, Ô tô **18 – 20 triệu**\n'
+        '- 🍺 **Nồng độ cồn**: Chi tiết 3 khung phạt tiền & trừ điểm/tước GPLX\n'
+        '- ⚡ **Chạy quá tốc độ, đi sai làn, đè vạch kẻ đường, không đội MBH**\n'
+        '- 🪪 **Quy định 12 điểm Giấy phép lái xe** & cách phục hồi điểm\n'
+        '- 🚗 **Kinh nghiệm xử lý tai nạn, tắc đường & phát tín hiệu SOS**\n\n'
+        '👉 Bạn hãy nhấn trực tiếp vào các **câu hỏi gợi ý bên dưới** hoặc nhập câu hỏi bất kỳ để mình giải đáp ngay nhé!';
   }
 
   void clearChat() {
