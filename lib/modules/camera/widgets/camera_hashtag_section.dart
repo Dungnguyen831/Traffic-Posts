@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:traffic_app/theme/app_theme.dart';
 
 import '../controllers/camera_controller.dart';
+import '../../../utils/hashtag_helper.dart';
 
 class CameraHashtagSection extends GetView<CameraController> {
   const CameraHashtagSection({super.key});
@@ -37,8 +38,7 @@ class CameraHashtagSection extends GetView<CameraController> {
                       color: selected ? Colors.white : AppTheme.primaryColor,
                     ),
                     SizedBox(width: 8.w),
-                    Text(
-                      tag,
+                    Text(HashtagHelper.getLabel(tag),
                       style: TextStyle(
                         color: selected ? Colors.white : AppTheme.primaryColor,
                         fontSize: 16.sp,

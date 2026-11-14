@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 import 'package:traffic_app/widgets/custom_alert.dart';
+import 'package:traffic_app/widgets/custom_dialog.dart';
 
 import '../../../data/models/traffic_post_model.dart';
 import '../../../data/models/user_info_model.dart';
@@ -10,11 +11,56 @@ import '../../../data/repositories/traffic_post_repository.dart';
 import '../../../data/repositories/user_repository.dart';
 import '../../../services/storage_service.dart';
 import '../../dashboard/controllers/dashboard_controller.dart';
+import '../../dashboard/widgets/edit_post_bottom_sheet.dart';
 import '../../dashboard/widgets/report_bottom_sheet.dart';
+import '../../map/controllers/map_controller.dart';
+import '../../../routes/app_pages.dart';
+import 'profile_controller.dart';
 
 class UserProfileController extends GetxController {
   // profile cache
   static final Map<String, Map<String, dynamic>> _profileCache = {};
+
+  static void clearCache() => _profileCache.clear();
+
+  /// Đồng bộ nội dung bài viết được chỉnh sửa vào bộ nhớ đệm và các instance đang mở
+  static void syncExternalPostUpdated(
+    String userId,
+    String postId,
+    String newContent,
+  ) {
+    for (final entry in _profileCache.entries) {
+      final cachedPosts = entry.value['posts'];
+      if (cachedPosts is List<TrafficPostModel>) {
+        final idx = cachedPosts.indexWhere((p) => p.id == postId);
+        if (idx != -1) {
+          cachedPosts[idx] = cachedPosts[idx].copyWith(content: newContent);
+        }
+      }
+    }
+    for (final tag in <String>['my_profile', userId]) {
+      if (tag.isNotEmpty && Get.isRegistered<UserProfileController>(tag: tag)) {
+        Get.find<UserProfileController>(
+          tag: tag,
+        )._applyLocalPostContentUpdate(postId, newContent);
+      }
+    }
+  }
+
+  /// Đồng bộ xóa bài viết khỏi bộ nhớ đệm và các instance đang mở
+  static void syncExternalPostDeleted(String userId, String postId) {
+    for (final entry in _profileCache.entries) {
+      final cachedPosts = entry.value['posts'];
+      if (cachedPosts is List<TrafficPostModel>) {
+        cachedPosts.removeWhere((p) => p.id == postId);
+      }
+    }
+    for (final tag in <String>['my_profile', userId]) {
+      if (tag.isNotEmpty && Get.isRegistered<UserProfileController>(tag: tag)) {
+        Get.find<UserProfileController>(tag: tag)._applyLocalPostDelete(postId);
+      }
+    }
+  }
 
   final _likedStates = <String, RxBool>{};
   final _likeCounts = <String, RxInt>{};
@@ -86,9 +132,12 @@ class UserProfileController extends GetxController {
     if (_profileCache.containsKey(targetUserId)) {
       final cachedData = _profileCache[targetUserId]!;
       userInfo.value = cachedData['userInfo'];
-      posts.assignAll(cachedData['posts']);
+      final cachedPosts = (cachedData['posts'] as List<TrafficPostModel>)
+          .where((p) => p.isVisible)
+          .toList();
+      posts.assignAll(cachedPosts);
 
-      initPostStates(cachedData['posts']);
+      initPostStates(cachedPosts);
 
       isFollowing.value = userInfo.value?.follow ?? false;
       _calculateTotalLikes();
@@ -161,16 +210,46 @@ class UserProfileController extends GetxController {
       );
 
       final newUserInfo = result['userInfo'] as UserInfoModel;
-      final newPosts = result['posts'] as List<TrafficPostModel>;
+      final newPosts = (result['posts'] as List<TrafficPostModel>)
+          .where((p) => p.isVisible)
+          .toList();
+      final rawPostCount = (result['rawPostCount'] as int?) ?? newPosts.length;
 
       initPostStates(newPosts);
 
       userInfo.value = newUserInfo;
       isFollowing.value = newUserInfo.follow ?? false;
 
-      if (newPosts.isEmpty) {
+      // Đồng bộ điểm uy tín, huy hiệu và avatar vào ProfileController và StorageService nếu là profile của chính mình
+      if (isMyProfile) {
+        final fullAvatar = newUserInfo.fullAvatarUrl;
+        StorageService.to.saveUserInfo(
+          avatarUrl: fullAvatar,
+          reputationScore: newUserInfo.reputationScore,
+          badge: newUserInfo.badge,
+          canCreatePost: newUserInfo.canCreatePost,
+        );
+        if (Get.isRegistered<ProfileController>()) {
+          final pc = Get.find<ProfileController>();
+          if (fullAvatar != null && fullAvatar.isNotEmpty) {
+            pc.currentAvatarUrl.value = fullAvatar;
+          }
+          if (newUserInfo.reputationScore != null) {
+            pc.reputationScore.value = newUserInfo.reputationScore!;
+          }
+          if (newUserInfo.badge != null) {
+            pc.badge.value = newUserInfo.badge!;
+          }
+          if (newUserInfo.canCreatePost != null) {
+            pc.canCreatePost.value = newUserInfo.canCreatePost!;
+          }
+        }
+      }
+
+      if (rawPostCount == 0) {
         hasMore.value = false;
         if (refresh) {
+          posts.clear();
           refreshController.refreshCompleted();
         } else {
           refreshController.loadNoData();
@@ -237,10 +316,18 @@ class UserProfileController extends GetxController {
     // Optimistic Update cho Header
     isFollowing.value = !isFollowing.value;
 
-    // Đồng bộ ngay sang DashboardController nếu đang tồn tại
+    // Đồng bộ ngay sang DashboardController & MapController nếu đang tồn tại
     if (Get.isRegistered<DashboardController>()) {
-      Get.find<DashboardController>().followedState(targetUserId).value =
-          isFollowing.value;
+      Get.find<DashboardController>().syncFollowFromExternal(
+        targetUserId,
+        isFollowing.value,
+      );
+    }
+    if (Get.isRegistered<MapController>()) {
+      Get.find<MapController>().syncUserFollowState(
+        targetUserId,
+        isFollowing.value,
+      );
     }
 
     if (userInfo.value != null) {
@@ -264,11 +351,31 @@ class UserProfileController extends GetxController {
       // Rollback cả 2 nơi
       isFollowing.value = !isFollowing.value;
       if (Get.isRegistered<DashboardController>()) {
-        Get.find<DashboardController>().followedState(targetUserId).value =
-            isFollowing.value;
+        Get.find<DashboardController>().syncFollowFromExternal(
+          targetUserId,
+          isFollowing.value,
+        );
       }
-      CustomAlert.showError('Không thể thực hiện. Vui lòng thử lại!');
+      if (Get.isRegistered<MapController>()) {
+        Get.find<MapController>().syncUserFollowState(
+          targetUserId,
+          isFollowing.value,
+        );
+      }
+      CustomAlert.showError('action_failed'.tr);
     }
+  }
+
+  /// Mở màn hình quản lý theo dõi (Người theo dõi / Đang theo dõi)
+  void openFollowManagement({int initialIndex = 0}) {
+    if (!isMyProfile) return;
+    Get.toNamed(
+      Routes.FOLLOW_MANAGEMENT,
+      arguments: {'initialIndex': initialIndex},
+    )?.then((_) {
+      // Làm mới lại số lượng người theo dõi và đang theo dõi sau khi trở về
+      loadProfileData(refresh: true, showLoading: false);
+    });
   }
 
   /// Toggle like/unlike post
@@ -284,8 +391,8 @@ class UserProfileController extends GetxController {
     likedState(postId).value = !isLiked;
     likeCount(postId).value = isLiked ? currentCount - 1 : currentCount + 1;
     _calculateTotalLikes();
-    // Sync về DashboardController để khi quay lại dashboard state nhất quán
-    _syncLikeToDashboard(
+    // Sync về DashboardController & MapController để khi quay lại state nhất quán
+    _syncLikeToExternal(
       postId,
       !isLiked,
       isLiked ? currentCount - 1 : currentCount + 1,
@@ -299,15 +406,19 @@ class UserProfileController extends GetxController {
       likedState(postId).value = isLiked;
       likeCount(postId).value = currentCount;
       _calculateTotalLikes();
-      _syncLikeToDashboard(postId, isLiked, currentCount);
+      _syncLikeToExternal(postId, isLiked, currentCount);
     }
   }
 
-  void _syncLikeToDashboard(String postId, bool isLiked, int count) {
-    if (!Get.isRegistered<DashboardController>()) return;
-    final dash = Get.find<DashboardController>();
-    dash.likedState(postId).value = isLiked;
-    dash.likeCount(postId).value = count;
+  void _syncLikeToExternal(String postId, bool isLiked, int count) {
+    if (Get.isRegistered<DashboardController>()) {
+      final dash = Get.find<DashboardController>();
+      dash.likedState(postId).value = isLiked;
+      dash.likeCount(postId).value = count;
+    }
+    if (Get.isRegistered<MapController>()) {
+      Get.find<MapController>().syncPostLikeState(postId, isLiked, count);
+    }
   }
 
   /// Report post
@@ -321,7 +432,7 @@ class UserProfileController extends GetxController {
             await _postRepository.reportPost(postId: post.id!, reason: reason);
             Get.back();
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              CustomAlert.showSuccess('Báo cáo bài viết thành công');
+              CustomAlert.showSuccess('dashboard_report_success'.tr);
             });
           } catch (e) {
             Get.back();
@@ -334,5 +445,116 @@ class UserProfileController extends GetxController {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
+  }
+
+  void _applyLocalPostContentUpdate(String postId, String newContent) {
+    final idx = posts.indexWhere((p) => p.id == postId);
+    if (idx != -1) {
+      posts[idx] = posts[idx].copyWith(content: newContent);
+    }
+  }
+
+  void _applyLocalPostDelete(String postId) {
+    posts.removeWhere((p) => p.id == postId);
+    _likedStates.remove(postId);
+    _likeCounts.remove(postId);
+    _calculateTotalLikes();
+  }
+
+  /// Mở Bottom Sheet chỉnh sửa nội dung bài viết (giữ nguyên thời gian và các trường khác)
+  void openEditPostSheet(TrafficPostModel post) {
+    final postId = post.id;
+    if (postId == null || postId.isEmpty) return;
+
+    EditPostBottomSheet.show(
+      post: post,
+      onSave: (newContent) async {
+        try {
+          await _postRepository.updatePost(
+            postId: postId,
+            type: (post.type != null && post.type!.isNotEmpty)
+                ? post.type!
+                : 'TRAFFIC_JAM',
+            content: newContent,
+            lat: post.location?.lat ?? 0.0,
+            lng: post.location?.lng ?? 0.0,
+            address: post.location?.address ?? '',
+            hashtags: post.hashtags ?? const <String>[],
+            status: (post.status != null && post.status!.isNotEmpty)
+                ? post.status!
+                : 'NORMAL',
+            timestamp: post.timestamp ?? DateTime.now().toUtc(),
+          );
+
+          // Cập nhật tại chỗ và đồng bộ sang các màn hình khác
+          final ownerId = post.userId ?? targetUserId;
+          syncExternalPostUpdated(ownerId, postId, newContent);
+          _applyLocalPostContentUpdate(postId, newContent);
+
+          if (Get.isRegistered<DashboardController>()) {
+            Get.find<DashboardController>().syncPostContentUpdated(
+              postId,
+              newContent,
+            );
+          }
+          if (Get.isRegistered<MapController>()) {
+            Get.find<MapController>().syncPostContentUpdated(
+              postId,
+              newContent,
+            );
+          }
+
+          if (Get.isBottomSheetOpen ?? false) {
+            Get.back();
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            CustomAlert.showSuccess('post_update_success'.tr);
+          });
+        } catch (e) {
+          CustomAlert.showError(e.toString());
+        }
+      },
+    );
+  }
+
+  /// Hiển thị hộp thoại xác nhận trước khi xóa bài viết
+  void confirmDeletePost(BuildContext context, TrafficPostModel post) {
+    final postId = post.id;
+    if (postId == null || postId.isEmpty) return;
+
+    CustomDialog.showConfirm(
+      context: context,
+      title: 'post_delete_confirm_title'.tr,
+      message: 'post_delete_confirm_message'.tr,
+      confirmText: 'post_delete_confirm_btn'.tr,
+      cancelText: 'profile_cancel'.tr,
+      type: DialogType.error,
+      onConfirm: () => deletePost(post),
+    );
+  }
+
+  /// Gọi API xóa bài viết và đồng bộ danh sách
+  Future<void> deletePost(TrafficPostModel post) async {
+    final postId = post.id;
+    if (postId == null || postId.isEmpty) return;
+
+    try {
+      await _postRepository.deletePost(postId);
+
+      final ownerId = post.userId ?? targetUserId;
+      syncExternalPostDeleted(ownerId, postId);
+      _applyLocalPostDelete(postId);
+
+      if (Get.isRegistered<DashboardController>()) {
+        Get.find<DashboardController>().syncPostDeleted(postId);
+      }
+      if (Get.isRegistered<MapController>()) {
+        Get.find<MapController>().syncPostDeleted(postId);
+      }
+
+      CustomAlert.showSuccess('post_delete_success'.tr);
+    } catch (e) {
+      CustomAlert.showError(e.toString());
+    }
   }
 }

@@ -1,20 +1,27 @@
-import 'dart:convert';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:traffic_app/widgets/custom_alert.dart';
 import 'package:traffic_app/widgets/custom_dialog.dart';
 
 import '../../../data/models/profile_request.dart';
+import '../../../data/models/user_info_model.dart';
 import '../../../data/repositories/user_repository.dart';
 import '../../../data/services/api_service.dart';
 import '../../../routes/app_pages.dart';
+import '../../../services/assets_service.dart';
+import '../../../services/image_picker_service.dart';
 import '../../../services/storage_service.dart';
+import '../../emergency/controllers/emergency_controller.dart';
+import '../../../data/services/sos_stream_service.dart';
+import '../../login/controllers/login_controller.dart';
 import '../../home/controllers/home_controller.dart';
+import '../../map/controllers/map_controller.dart';
+import 'user_profile_controller.dart';
 
 class ProfileController extends GetxController {
   final UserRepository _userRepository = UserRepository();
@@ -22,47 +29,44 @@ class ProfileController extends GetxController {
   final nameController = TextEditingController();
   final emailController = TextEditingController();
   final phoneController = TextEditingController();
-  final addressController = TextEditingController();
   final relativePhoneController = TextEditingController();
 
   var isLoading = false.obs;
 
   var selectedImagePath = ''.obs;
-  var currentAvatarUrl = ''.obs;
+  var currentAvatarUrl = (StorageService.to.getAvatarUrl() ?? '').obs;
 
   // Provinces data
   var provinces = <Map<String, dynamic>>[].obs;
   var selectedProvince = Rxn<Map<String, dynamic>>();
 
-  final ImagePicker _picker = ImagePicker();
+  ImagePicker get _picker => ImagePickerService.to.picker;
 
   // Flag để kiểm tra dữ liệu đã được load chưa
   var isDataLoaded = false.obs;
   var isProvincesLoaded = false.obs;
 
+  // Điểm uy tín và huy hiệu
+  var reputationScore = StorageService.to.getReputationScore().obs;
+  var badge = StorageService.to.getBadge().obs;
+  var canCreatePost = StorageService.to.canCreatePost().obs;
+
   @override
   void onInit() {
     super.onInit();
-    // Load provinces và profile song song, không block UI
     _initData();
   }
 
   Future<void> _initData() async {
-    // Load cả 2 song song để tối ưu thời gian
-    await Future.wait([loadProvinces(), loadUserProfile()]);
+    await loadProvinces();
+    await loadUserProfile();
   }
 
   Future<void> loadProvinces() async {
     if (isProvincesLoaded.value) return;
 
     try {
-      final String response = await rootBundle.loadString(
-        'assets/json/provinces.json',
-      );
-      final List<dynamic> data = json.decode(response);
-      final List<Map<String, dynamic>> mappedData = data
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+      final mappedData = await AssetsService.to.getProvinces();
       provinces.assignAll(mappedData);
       isProvincesLoaded.value = true;
     } catch (e) {
@@ -75,7 +79,6 @@ class ProfileController extends GetxController {
     nameController.dispose();
     emailController.dispose();
     phoneController.dispose();
-    addressController.dispose();
     relativePhoneController.dispose();
     super.onClose();
   }
@@ -96,18 +99,67 @@ class ProfileController extends GetxController {
       nameController.text = user.fullname ?? "";
       emailController.text = user.email ?? "";
       phoneController.text = user.phoneNumber ?? "";
-      addressController.text = user.province ?? "";
       relativePhoneController.text = user.relativePhone ?? "";
 
+      final score = user.reputationScore ?? 100;
+      final badgeName = user.badge ?? 'Người dẫn đường';
+      final canPost = user.canCreatePost ?? (score >= 80);
+
+      reputationScore.value = score;
+      badge.value = badgeName;
+      canCreatePost.value = canPost;
+
+      String? resolvedAvatarUrl = user.fullAvatarUrl;
+      final uid = user.id ?? StorageService.to.getUserId();
+
+      // Fallback: Nếu API /users/profile không trả về avatarUrl, lấy từ /users/{id}/profile
+      if ((resolvedAvatarUrl == null || resolvedAvatarUrl.isEmpty) &&
+          uid != null) {
+        try {
+          final profileDetail = await _userRepository.getUserProfile(
+            uid.toString(),
+            page: 0,
+            size: 1,
+          );
+          final userInfo = profileDetail['userInfo'] as UserInfoModel?;
+          resolvedAvatarUrl = userInfo?.fullAvatarUrl;
+        } catch (e) {
+          debugPrint('Fallback avatar load error: $e');
+        }
+      }
+
+      if (resolvedAvatarUrl != null && resolvedAvatarUrl.isNotEmpty) {
+        if (forceRefresh) {
+          if (currentAvatarUrl.value.isNotEmpty &&
+              !currentAvatarUrl.value.startsWith('assets/') &&
+              !currentAvatarUrl.value.startsWith('blob:') &&
+              !currentAvatarUrl.value.startsWith('data:')) {
+            await CachedNetworkImage.evictFromCache(currentAvatarUrl.value);
+          }
+          if (!resolvedAvatarUrl.startsWith('assets/') &&
+              !resolvedAvatarUrl.startsWith('blob:') &&
+              !resolvedAvatarUrl.startsWith('data:')) {
+            await CachedNetworkImage.evictFromCache(resolvedAvatarUrl);
+          }
+        }
+        currentAvatarUrl.value = resolvedAvatarUrl;
+      }
+
       StorageService.to.saveUserInfo(
+        userId: user.id,
+        username: user.username,
         fullname: user.fullname,
         province: user.province,
         relativePhone: user.relativePhone,
+        phoneNumber: user.phoneNumber,
+        avatarUrl: resolvedAvatarUrl,
+        reputationScore: score,
+        badge: badgeName,
+        canCreatePost: canPost,
       );
 
       // Set selected province
       if (user.province != null && user.province!.isNotEmpty) {
-        // Wait for provinces to load if empty
         if (!isProvincesLoaded.value) {
           await loadProvinces();
         }
@@ -120,17 +172,6 @@ class ProfileController extends GetxController {
         if (province.isNotEmpty) {
           selectedProvince.value = province;
         }
-      }
-
-      if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
-        if (user.avatarUrl!.startsWith('assets/')) {
-          currentAvatarUrl.value = user.avatarUrl!;
-        } else {
-          currentAvatarUrl.value =
-              "${user.avatarUrl}?t=${DateTime.now().millisecondsSinceEpoch}";
-        }
-      } else {
-        currentAvatarUrl.value = "";
       }
 
       // Đánh dấu đã load dữ liệu thành công
@@ -205,10 +246,14 @@ class ProfileController extends GetxController {
         province: updatedUser.province,
         relativePhone: updatedUser.relativePhone,
         phoneNumber: updatedUser.phoneNumber,
+        reputationScore: reputationScore.value,
+        badge: badge.value,
+        canCreatePost: canCreatePost.value,
       );
 
       homeController.completeUpload();
       selectedImagePath.value = '';
+      UserProfileController.clearCache();
 
       CustomAlert.showSuccess('profile_update_success'.tr);
 
@@ -242,17 +287,46 @@ class ProfileController extends GetxController {
   void logout() {
     CustomDialog.showConfirm(
       context: Get.context!,
-      title: 'Đăng xuất',
-      message: 'Bạn có chắc chắn muốn đăng xuất không?',
-      confirmText: 'Đăng xuất',
-      cancelText: 'Hủy',
+      title: 'logout'.tr,
+      message: 'logout_confirm_message'.tr,
+      confirmText: 'logout'.tr,
+      cancelText: 'cancel'.tr,
       type: DialogType.warning,
       onConfirm: () async {
         final storage = StorageService.to;
         await storage.removeToken();
         await storage.clearCredentials();
         await storage.clearUserInfo();
+        UserProfileController.clearCache();
+        // Không xóa active SOS ở đây để bảo lưu trạng thái SOS của user này trong local storage
         ApiService().clearToken();
+
+        // 1. Ngắt ngay luồng phát tín hiệu và reset UI/state SOS về mặc định
+        if (Get.isRegistered<EmergencyController>()) {
+          Get.find<EmergencyController>().resetSosState();
+          Get.delete<EmergencyController>(force: true);
+        }
+
+        // 2. Ngắt kết nối SSE stream và xóa danh sách SOS realtime trên thiết bị
+        if (Get.isRegistered<SosStreamService>()) {
+          final sosStream = Get.find<SosStreamService>();
+          sosStream.disconnect();
+          sosStream.sosList.clear();
+          Get.delete<SosStreamService>(force: true);
+        }
+
+        // 3. Ngắt kết nối WebSocket map nếu đang mở
+        if (Get.isRegistered<MapController>()) {
+          Get.delete<MapController>(force: true);
+        }
+
+        if (Get.isRegistered<LoginController>()) {
+          Get.delete<LoginController>(force: true);
+        }
+        if (Get.isRegistered<ProfileController>()) {
+          Get.delete<ProfileController>(force: true);
+        }
+
         Get.offAllNamed(Routes.LOGIN);
       },
     );

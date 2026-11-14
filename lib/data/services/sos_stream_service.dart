@@ -10,6 +10,7 @@ import 'package:traffic_app/data/repositories/sos_repository.dart';
 
 import '../../config/demo_config.dart';
 import '../../services/storage_service.dart';
+import '../../modules/emergency/controllers/emergency_controller.dart';
 import '../models/sos_model.dart';
 
 /// Trạng thái kết nối SSE
@@ -463,8 +464,15 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
 
     // Re-login thất bại → về màn login
     debugPrint('[SOS-SSE] Re-login thất bại — về màn login');
+    if (Get.isRegistered<EmergencyController>()) {
+      Get.find<EmergencyController>().resetSosState();
+      Get.delete<EmergencyController>(force: true);
+    }
+    _disconnect();
+    sosList.clear();
     await storage.removeToken();
     await storage.clearCredentials();
+    await storage.clearUserInfo();
     Get.offAllNamed('/login');
   }
 

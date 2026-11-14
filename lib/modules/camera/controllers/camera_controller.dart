@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
@@ -12,9 +13,14 @@ import 'package:intl/intl.dart';
 import '../../../config/demo_config.dart';
 import '../../../data/repositories/traffic_post_repository.dart';
 import '../../../services/image_picker_service.dart';
+import '../../../services/storage_service.dart';
 import '../../../widgets/custom_alert.dart';
 import '../../dashboard/controllers/dashboard_controller.dart';
 import '../../home/controllers/home_controller.dart';
+import '../../map/controllers/map_controller.dart';
+import '../../profile/controllers/profile_controller.dart';
+
+enum ImageModerationStatus { none, checking, valid, invalid, error }
 
 class CameraController extends GetxController {
   ImagePicker get _picker => ImagePickerService.to.picker;
@@ -24,7 +30,14 @@ class CameraController extends GetxController {
   final imagePath = ''.obs;
   final contentController = TextEditingController();
 
-  final availableHashtags = ['ketxe', 'tainan', 'ngaplutnuoc', 'baocaotainan', 'sos'];
+  final moderationStatus = ImageModerationStatus.none.obs;
+  final moderationMessage = ''.obs;
+  CancelToken? _moderationCancelToken;
+
+  bool get isImageValid =>
+      hasImage.value && moderationStatus.value == ImageModerationStatus.valid;
+
+  final availableHashtags = ['ketxe', 'tainan', 'ngaplutnuoc', 'baocaotainan'];
   final selectedHashtags = <String>[].obs;
 
   void toggleHashtag(String tag) {
@@ -36,24 +49,49 @@ class CameraController extends GetxController {
   }
 
   void clearImage() {
+    _moderationCancelToken?.cancel('Image cleared by user');
+    _moderationCancelToken = null;
     hasImage.value = false;
     imagePath.value = '';
+    moderationStatus.value = ImageModerationStatus.none;
+    moderationMessage.value = '';
   }
 
   final time = ''.obs;
   final location = 'camera_loading_location'.tr.obs;
   final currentLat = 0.0.obs;
   final currentLng = 0.0.obs;
+  final isLoadingLocation = false.obs;
+  Future<void>? _locationLoadFuture;
+
+  final canCreatePost = true.obs;
 
   @override
   void onInit() {
     super.onInit();
+    refreshLocationAndTime();
+  }
+
+  /// Làm mới thời gian và tải lại vị trí GPS hiện tại (xóa vị trí cũ để tránh dùng lại tọa độ cũ)
+  Future<void> refreshLocationAndTime() {
+    checkCanCreatePost();
     _updateTime();
-    _getCurrentLocation();
+    currentLat.value = 0.0;
+    currentLng.value = 0.0;
+    location.value = 'camera_loading_location'.tr;
+
+    final future = _getCurrentLocation();
+    _locationLoadFuture = future;
+    return future;
+  }
+
+  void checkCanCreatePost() {
+    canCreatePost.value = StorageService.to.canCreatePost();
   }
 
   @override
   void onClose() {
+    _moderationCancelToken?.cancel('Controller disposed');
     contentController.dispose();
     super.onClose();
   }
@@ -64,15 +102,15 @@ class CameraController extends GetxController {
   }
 
   Future<void> _getCurrentLocation() async {
-    // Không yêu cầu popup cấp quyền GPS trình duyệt trên Web Demo
-    if (DemoConfig.isDemoMode) {
-      currentLat.value = DemoConfig.currentSimulatedPosition.latitude;
-      currentLng.value = DemoConfig.currentSimulatedPosition.longitude;
-      location.value = DemoConfig.defaultAddress;
-      return;
-    }
-
+    isLoadingLocation.value = true;
     try {
+      if (DemoConfig.isDemoMode) {
+        currentLat.value = DemoConfig.currentSimulatedPosition.latitude;
+        currentLng.value = DemoConfig.currentSimulatedPosition.longitude;
+        location.value = DemoConfig.defaultAddress;
+        return;
+      }
+
       // Kiểm tra dịch vụ vị trí có được bật không
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -95,7 +133,7 @@ class CameraController extends GetxController {
         return;
       }
 
-      // Lấy vị trí hiện tại
+      // Lấy vị trí hiện tại mới nhất từ GPS
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -131,6 +169,8 @@ class CameraController extends GetxController {
     } catch (e) {
       location.value = 'cannot_get_location'.tr;
       debugPrint('Error getting location: $e');
+    } finally {
+      isLoadingLocation.value = false;
     }
   }
 
@@ -144,7 +184,8 @@ class CameraController extends GetxController {
       if (image != null) {
         imagePath.value = image.path;
         hasImage.value = true;
-        _updateTime(); // Cập nhật thời gian khi chụp ảnh
+        refreshLocationAndTime(); // Cập nhật lại thời gian và vị trí mới khi chụp ảnh
+        await validateSelectedImage();
       }
     } catch (e) {
       CustomAlert.showError('${'camera_cannot_capture'.tr}: $e');
@@ -161,15 +202,76 @@ class CameraController extends GetxController {
       if (image != null) {
         imagePath.value = image.path;
         hasImage.value = true;
-        _updateTime();
+        refreshLocationAndTime(); // Cập nhật lại thời gian và vị trí mới khi chọn ảnh
+        await validateSelectedImage();
       }
     } catch (e) {
       CustomAlert.showError('${'cannot_pick_image'.tr}: $e');
     }
   }
 
+  /// Kiểm duyệt hình ảnh ngay sau khi chụp hoặc chọn từ thư viện
+  Future<void> validateSelectedImage() async {
+    final currentPath = imagePath.value;
+    if (currentPath.isEmpty || !hasImage.value) return;
+
+    _moderationCancelToken?.cancel('New image moderation started');
+    final cancelToken = CancelToken();
+    _moderationCancelToken = cancelToken;
+
+    moderationStatus.value = ImageModerationStatus.checking;
+    moderationMessage.value = '';
+
+    try {
+      final isValid = await _repository.verifyTrafficImage(
+        currentPath,
+        cancelToken: cancelToken,
+      );
+
+      if (cancelToken.isCancelled || imagePath.value != currentPath) return;
+
+      if (isValid) {
+        moderationStatus.value = ImageModerationStatus.valid;
+        moderationMessage.value = '';
+      } else {
+        moderationStatus.value = ImageModerationStatus.invalid;
+        moderationMessage.value = 'camera_image_invalid_message'.tr;
+        CustomAlert.showError('camera_image_invalid_alert'.tr);
+      }
+    } on DioException catch (e) {
+      if (CancelToken.isCancel(e) || imagePath.value != currentPath) return;
+      moderationStatus.value = ImageModerationStatus.error;
+      moderationMessage.value = 'camera_image_moderation_error'.tr;
+      CustomAlert.showError('camera_image_moderation_error'.tr);
+    } catch (e) {
+      if (imagePath.value != currentPath) return;
+      moderationStatus.value = ImageModerationStatus.error;
+      moderationMessage.value = 'camera_image_moderation_error'.tr;
+      CustomAlert.showError('camera_image_moderation_error'.tr);
+    }
+  }
+
   void onActionTap() {
+    checkCanCreatePost();
+    if (!canCreatePost.value) {
+      CustomAlert.showWarning(
+        'reputation_cannot_post_alert'.tr,
+        duration: const Duration(seconds: 4),
+      );
+      return;
+    }
     if (hasImage.value) {
+      if (moderationStatus.value == ImageModerationStatus.checking) {
+        return;
+      }
+      if (moderationStatus.value == ImageModerationStatus.invalid) {
+        CustomAlert.showError('camera_image_invalid_alert'.tr);
+        return;
+      }
+      if (moderationStatus.value == ImageModerationStatus.error) {
+        validateSelectedImage();
+        return;
+      }
       _sendPost();
     } else {
       captureImage();
@@ -177,6 +279,19 @@ class CameraController extends GetxController {
   }
 
   Future<void> _sendPost() async {
+    if (!StorageService.to.canCreatePost()) {
+      CustomAlert.showWarning(
+        'reputation_cannot_post_alert'.tr,
+        duration: const Duration(seconds: 4),
+      );
+      return;
+    }
+
+    if (moderationStatus.value != ImageModerationStatus.valid) {
+      CustomAlert.showError('camera_image_invalid_alert'.tr);
+      return;
+    }
+
     if (contentController.text.trim().isEmpty) {
       CustomAlert.showWarning('camera_please_enter_content'.tr);
       return;
@@ -185,6 +300,11 @@ class CameraController extends GetxController {
     if (selectedHashtags.isEmpty) {
       CustomAlert.showWarning('camera_please_select_hashtag'.tr);
       return;
+    }
+
+    // Nếu tiến trình tải vị trí mới đang diễn ra thì chờ hoàn tất trước khi kiểm tra
+    if (isLoadingLocation.value && _locationLoadFuture != null) {
+      await _locationLoadFuture;
     }
 
     if (currentLat.value == 0.0 || currentLng.value == 0.0) {
@@ -207,38 +327,62 @@ class CameraController extends GetxController {
       'lng': currentLng.value,
       'address': location.value,
       'hashtags': List<String>.from(selectedHashtags),
-      'status': 'TRAFFIC_REPORT',
+      'status': 'NORMAL',
       'filePath': imagePath.value,
     };
 
     // Chuyển về tab home
     homeController.changeTab(0);
 
-    // Bắt đầu hiển thị progress
-    homeController.startUpload();
+    final uploadCancelToken = CancelToken();
 
-    // Reset form
+    // Bắt đầu hiển thị progress kèm callback hủy request thực sự
+    homeController.startUpload(
+      onCancel: () {
+        if (!uploadCancelToken.isCancelled) {
+          uploadCancelToken.cancel('Upload cancelled by user');
+        }
+      },
+    );
+
+    // Reset form và xóa tọa độ cũ
     final imagePathTemp = imagePath.value;
     hasImage.value = false;
     imagePath.value = '';
+    moderationStatus.value = ImageModerationStatus.none;
+    moderationMessage.value = '';
     contentController.clear();
     selectedHashtags.clear();
+    currentLat.value = 0.0;
+    currentLng.value = 0.0;
+    location.value = 'camera_loading_location'.tr;
 
-    // Upload trong isolate / giả lập demo
-    _uploadInIsolate(postData, homeController, imagePathTemp);
+    // Upload
+    _uploadInIsolate(
+      postData,
+      homeController,
+      imagePathTemp,
+      uploadCancelToken,
+    );
   }
 
   /// Chọn nhanh ảnh giao thông mẫu để kiểm thử trên Web Demo
   void selectDemoSampleImage() {
-    imagePath.value =
-        'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800';
+    imagePath.value = 'assets/icons/traffic_ketxe.jpg';
     hasImage.value = true;
+    moderationStatus.value = ImageModerationStatus.valid;
+    moderationMessage.value = '';
     if (contentController.text.trim().isEmpty) {
       contentController.text =
           'Mật độ phương tiện tăng cao giờ cao điểm, các phương tiện di chuyển chậm.';
     }
     if (selectedHashtags.isEmpty) {
       selectedHashtags.add('ketxe');
+    }
+    if (currentLat.value == 0.0 || currentLng.value == 0.0) {
+      currentLat.value = DemoConfig.currentSimulatedPosition.latitude;
+      currentLng.value = DemoConfig.currentSimulatedPosition.longitude;
+      location.value = DemoConfig.defaultAddress;
     }
     _updateTime();
   }
@@ -247,6 +391,7 @@ class CameraController extends GetxController {
     Map<String, dynamic> postData,
     HomeController homeController,
     String imagePathTemp,
+    CancelToken cancelToken,
   ) {
     if (DemoConfig.isDemoMode) {
       // Giả lập tiến trình upload mượt mà trong chế độ Demo Web
@@ -275,6 +420,9 @@ class CameraController extends GetxController {
                 if (homeController.currentIndex.value == 0) {
                   dashboardController.prependPost(post);
                 }
+                if (Get.isRegistered<MapController>()) {
+                  Get.find<MapController>().addDynamicPost(post);
+                }
                 CustomAlert.showSuccess('camera_post_success'.tr);
               })
               .catchError((error) {
@@ -299,6 +447,7 @@ class CameraController extends GetxController {
           hashtags: postData['hashtags'] as List<String>,
           status: postData['status'] as String,
           filePath: imagePathTemp,
+          cancelToken: cancelToken,
           onSendProgress: (sent, total) {
             if (total > 0) {
               final progress = sent / total;
@@ -314,9 +463,16 @@ class CameraController extends GetxController {
           if (homeController.currentIndex.value == 0) {
             dashboardController.prependPost(post);
           }
+          // Refresh profile để cập nhật điểm mới nhất sau khi đăng bài
+          if (Get.isRegistered<ProfileController>()) {
+            Get.find<ProfileController>().loadUserProfile(forceRefresh: true);
+          }
           CustomAlert.showSuccess('camera_post_success'.tr);
         })
         .catchError((error) {
+          if (error is DioException && CancelToken.isCancel(error)) {
+            return;
+          }
           homeController.cancelUpload();
           CustomAlert.showError(
             '${'camera_cannot_post'.tr}: $error',

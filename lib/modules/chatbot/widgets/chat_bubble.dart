@@ -17,6 +17,81 @@ class AiMessageBubble extends StatelessWidget {
   final bool isStreaming;
   final bool isError;
 
+  static MarkdownStyleSheet? _cachedStyleSheet;
+
+  static MarkdownStyleSheet _getStyleSheet() {
+    return _cachedStyleSheet ??= MarkdownStyleSheet(
+      p: GoogleFonts.quicksand(
+        fontSize: 14.sp,
+        color: AppTheme.textColor,
+        height: 1.55,
+      ),
+      strong: GoogleFonts.quicksand(
+        fontSize: 14.sp,
+        color: AppTheme.textColor,
+        fontWeight: FontWeight.w700,
+        height: 1.55,
+      ),
+      em: GoogleFonts.quicksand(
+        fontSize: 14.sp,
+        color: AppTheme.textColor,
+        fontStyle: FontStyle.italic,
+        height: 1.55,
+      ),
+      h1: GoogleFonts.quicksand(
+        fontSize: 18.sp,
+        color: AppTheme.textColor,
+        fontWeight: FontWeight.w700,
+      ),
+      h2: GoogleFonts.quicksand(
+        fontSize: 16.sp,
+        color: AppTheme.textColor,
+        fontWeight: FontWeight.w700,
+      ),
+      h3: GoogleFonts.quicksand(
+        fontSize: 15.sp,
+        color: AppTheme.textColor,
+        fontWeight: FontWeight.w600,
+      ),
+      listBullet: GoogleFonts.quicksand(
+        fontSize: 14.sp,
+        color: AppTheme.textColor,
+        height: 1.55,
+      ),
+      code: GoogleFonts.sourceCodePro(
+        fontSize: 13.sp,
+        color: AppTheme.primaryColor,
+        backgroundColor: AppTheme.primaryColor.withOpacity(0.08),
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      blockquoteDecoration: const BoxDecoration(
+        border: Border(
+          left: BorderSide(
+            color: AppTheme.primaryColor,
+            width: 3,
+          ),
+        ),
+      ),
+      blockquote: GoogleFonts.quicksand(
+        fontSize: 14.sp,
+        color: AppTheme.subTextColor,
+        fontStyle: FontStyle.italic,
+        height: 1.55,
+      ),
+      horizontalRuleDecoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: AppTheme.dividerColor,
+            width: 1,
+          ),
+        ),
+      ),
+    );
+  }
+
   const AiMessageBubble({
     super.key,
     required this.text,
@@ -121,77 +196,7 @@ class AiMessageBubble extends StatelessWidget {
                               },
                             );
                           },
-                          styleSheet: MarkdownStyleSheet(
-                            p: GoogleFonts.quicksand(
-                              fontSize: 14.sp,
-                              color: AppTheme.textColor,
-                              height: 1.55,
-                            ),
-                            strong: GoogleFonts.quicksand(
-                              fontSize: 14.sp,
-                              color: AppTheme.textColor,
-                              fontWeight: FontWeight.w700,
-                              height: 1.55,
-                            ),
-                            em: GoogleFonts.quicksand(
-                              fontSize: 14.sp,
-                              color: AppTheme.textColor,
-                              fontStyle: FontStyle.italic,
-                              height: 1.55,
-                            ),
-                            h1: GoogleFonts.quicksand(
-                              fontSize: 18.sp,
-                              color: AppTheme.textColor,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            h2: GoogleFonts.quicksand(
-                              fontSize: 16.sp,
-                              color: AppTheme.textColor,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            h3: GoogleFonts.quicksand(
-                              fontSize: 15.sp,
-                              color: AppTheme.textColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            listBullet: GoogleFonts.quicksand(
-                              fontSize: 14.sp,
-                              color: AppTheme.textColor,
-                              height: 1.55,
-                            ),
-                            code: GoogleFonts.sourceCodePro(
-                              fontSize: 13.sp,
-                              color: AppTheme.primaryColor,
-                              backgroundColor: AppTheme.primaryColor
-                                  .withOpacity(0.08),
-                            ),
-                            codeblockDecoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withOpacity(0.06),
-                              borderRadius: BorderRadius.circular(8.r),
-                            ),
-                            blockquoteDecoration: BoxDecoration(
-                              border: Border(
-                                left: BorderSide(
-                                  color: AppTheme.primaryColor,
-                                  width: 3,
-                                ),
-                              ),
-                            ),
-                            blockquote: GoogleFonts.quicksand(
-                              fontSize: 14.sp,
-                              color: AppTheme.subTextColor,
-                              fontStyle: FontStyle.italic,
-                              height: 1.55,
-                            ),
-                            horizontalRuleDecoration: BoxDecoration(
-                              border: Border(
-                                top: BorderSide(
-                                  color: AppTheme.dividerColor,
-                                  width: 1,
-                                ),
-                              ),
-                            ),
-                          ),
+                          styleSheet: _getStyleSheet(),
                         ),
                       // Cursor nhấp nháy khi đang stream
                       if (isStreaming)

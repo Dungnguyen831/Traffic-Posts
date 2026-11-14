@@ -20,9 +20,39 @@ class CameraInfoChips extends GetView<CameraController> {
             text: "${'camera_time_label'.tr} ${controller.time.value}",
           ),
           SizedBox(height: 12.h),
-          _buildChip(
-            icon: IconlyBold.location,
-            text: "${'camera_location_label'.tr} ${controller.location.value}",
+          GestureDetector(
+            onTap: controller.isLoadingLocation.value
+                ? null
+                : () => controller.refreshLocationAndTime(),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: _buildChip(
+                    icon: IconlyBold.location,
+                    text:
+                        "${'camera_location_label'.tr} ${controller.location.value}",
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                if (controller.isLoadingLocation.value)
+                  SizedBox(
+                    width: 14.w,
+                    height: 14.w,
+                    child: const CircularProgressIndicator(
+                      strokeWidth: 1.8,
+                      color: AppTheme.primaryColor,
+                    ),
+                  )
+                else
+                  Icon(
+                    Icons.refresh_rounded,
+                    color: AppTheme.primaryColor,
+                    size: 18.sp,
+                  ),
+              ],
+            ),
           ),
         ],
       ),

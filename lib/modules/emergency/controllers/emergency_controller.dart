@@ -1,19 +1,32 @@
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../config/demo_config.dart';
+import '../../../data/models/sos_model.dart';
 import '../../../data/repositories/sos_repository.dart';
 import '../../../data/services/sos_stream_service.dart';
+import '../../../routes/app_pages.dart';
 import '../../../services/storage_service.dart';
 import '../../../widgets/custom_alert.dart';
-import '../views/sos_active_screen.dart';
+import '../../home/controllers/home_controller.dart';
+import '../../map/controllers/map_controller.dart';
 
 class EmergencyController extends GetxController {
+  static EmergencyController get to => Get.find<EmergencyController>();
+
   var selectedOption = 0.obs;
   var isLoading = false.obs;
+
+  // Trạng thái phát tín hiệu SOS
   var activeSosId = ''.obs;
+  var isSosActive = false.obs;
+  var isSheetMinimized = false.obs;
+  var activeSosLat = 0.0.obs;
+  var activeSosLng = 0.0.obs;
+  var activeSosNote = ''.obs;
 
   final TextEditingController noteController = TextEditingController();
   final SosRepository _sosRepo = SosRepository();
@@ -25,8 +38,8 @@ class EmergencyController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    // Vừa mở app lên là đi tìm xem mình có SOS nào đang chạy trên Server không
-    _checkMyActiveSosFromServer();
+    // Vừa mở app lên là kiểm tra phiên SOS cục bộ & trên server
+    checkAndRestoreActiveSos();
   }
 
   Future<void> onContinue() async {
@@ -36,7 +49,7 @@ class EmergencyController extends GetxController {
 
       if (relativePhone.isEmpty) {
         CustomAlert.showWarning('emergency_notification_mesg_1'.tr);
-        await _makePhoneCall(''); 
+        return;
       } else {
         await _makePhoneCall(relativePhone);
       }
@@ -66,46 +79,151 @@ class EmergencyController extends GetxController {
     }
   }
 
-  // Hàm tự động check SOS của chính mình từ Server
-  Future<void> _checkMyActiveSosFromServer() async {
+  /// Reset toàn bộ trạng thái SOS (khi logout hoặc chuyển đổi tài khoản)
+  void resetSosState() {
+    activeSosId.value = '';
+    isSosActive.value = false;
+    isSheetMinimized.value = false;
+    activeSosLat.value = 0.0;
+    activeSosLng.value = 0.0;
+    activeSosNote.value = '';
+  }
+
+  /// Tự động kiểm tra và khôi phục lượt SOS NẾU CHÍNH TÀI KHOẢN NÀY đang phát tín hiệu
+  Future<void> checkAndRestoreActiveSos({int? targetUserId}) async {
     try {
-      final myPhone = StorageService.to.getPhoneNumber() ?? 
-                      StorageService.to.getUsername() ?? '';
-      
-      if (myPhone.isEmpty) return;
+      final currentUserId = targetUserId ?? StorageService.to.getUserId();
+      final currentPhone = (StorageService.to.getPhoneNumber() ?? '').trim();
+      final currentUsername = (StorageService.to.getUsername() ?? '').trim();
 
-      final actives = await _sosRepo.getActiveSosAlerts();
+      // Nếu chưa có ID tài khoản đăng nhập, dứt khoát không có active SOS của tài khoản
+      if (currentUserId == null) {
+        resetSosState();
+        return;
+      }
 
-      for (final sos in actives) {
-        // So sánh chính xác với số điện thoại đã lưu
-        if (sos.phoneNumber == myPhone) {
-          activeSosId.value = sos.sosId; 
-          debugPrint('🔄 Đã khớp SOS của tôi: ${sos.sosId}');
-          break;
+      // 1. Đọc cache phiên SOS gắn chặt theo currentUserId
+      final cached = StorageService.to.getActiveSos(userId: currentUserId);
+
+      // 2. Lấy danh sách SOS từ server
+      List<SosResponseDTO> actives = [];
+      bool serverSuccess = false;
+      try {
+        actives = await _sosRepo.getActiveSosAlerts();
+        serverSuccess = true;
+      } catch (e) {
+        debugPrint('[SOS] Lỗi khi lấy danh sách SOS active từ server: $e');
+      }
+
+      SosResponseDTO? matched;
+      if (serverSuccess) {
+        for (final sos in actives) {
+          bool isMyAlert = false;
+
+          // 1. So khớp ID người dùng (Ưu tiên cao nhất)
+          if (sos.userId != null) {
+            if (sos.userId == currentUserId) {
+              isMyAlert = true;
+            } else {
+              // Nếu sos có userId rõ ràng và khác currentUserId -> Chắc chắn của người khác!
+              continue;
+            }
+          }
+          // 2. So khớp theo ID lượt SOS NẾU cache thuộc về chính tài khoản này
+          else if (cached != null &&
+              cached['sosId'] != null &&
+              sos.sosId == cached['sosId']) {
+            isMyAlert = true;
+          }
+          // 3. So khớp Username (chỉ khi sos không có userId)
+          else if (currentUsername.isNotEmpty &&
+              sos.username != null &&
+              sos.username!.isNotEmpty &&
+              sos.username == currentUsername) {
+            isMyAlert = true;
+          }
+          // 4. So khớp Số điện thoại gửi kèm
+          else if (currentPhone.isNotEmpty &&
+              sos.phoneNumber != null &&
+              sos.phoneNumber!.trim().isNotEmpty &&
+              sos.phoneNumber!.trim() == currentPhone) {
+            isMyAlert = true;
+          }
+
+          if (isMyAlert) {
+            matched = sos;
+            break;
+          }
         }
       }
+
+      if (matched != null) {
+        activeSosId.value = matched.sosId;
+        activeSosLat.value = matched.latitude ??
+            (cached != null ? (cached['lat'] as num).toDouble() : 0.0);
+        activeSosLng.value = matched.longitude ??
+            (cached != null ? (cached['lng'] as num).toDouble() : 0.0);
+        activeSosNote.value = matched.note ??
+            (cached != null ? (cached['note'] as String) : '');
+        isSosActive.value = true;
+        isSheetMinimized.value = true;
+
+        await StorageService.to.saveActiveSos(
+          sosId: matched.sosId,
+          lat: activeSosLat.value,
+          lng: activeSosLng.value,
+          note: activeSosNote.value,
+          userId: currentUserId,
+          phoneNumber: currentPhone,
+          username: currentUsername,
+        );
+
+        debugPrint(
+          '🔄 Đã khôi phục thành công lượt SOS của tài khoản $currentUserId: ${matched.sosId} tại (${activeSosLat.value}, ${activeSosLng.value})',
+        );
+      } else if (serverSuccess) {
+        // Server phản hồi thành công và tài khoản hiện tại KHÔNG có SOS nào đang hoạt động
+        resetSosState();
+        if (cached != null) {
+          await StorageService.to.clearActiveSos(userId: currentUserId);
+        }
+      } else if (cached != null) {
+        // Mạng lỗi nhưng trong cache của chính currentUserId có SOS hợp lệ
+        activeSosId.value = cached['sosId'] ?? '';
+        activeSosLat.value = (cached['lat'] as num?)?.toDouble() ?? 0.0;
+        activeSosLng.value = (cached['lng'] as num?)?.toDouble() ?? 0.0;
+        activeSosNote.value = cached['note'] ?? '';
+        isSosActive.value = activeSosId.value.isNotEmpty;
+        isSheetMinimized.value = true;
+        debugPrint(
+          '🔄 Khôi phục tạm từ cache cho tài khoản $currentUserId: ${activeSosId.value}',
+        );
+      } else {
+        // Tài khoản hiện tại không có SOS nào
+        resetSosState();
+      }
     } catch (e) {
-      debugPrint('Lỗi khi kiểm tra SOS: $e');
+      debugPrint('Lỗi khi kiểm tra khôi phục SOS: $e');
+      resetSosState();
     }
   }
 
-  /// Hàm chạy khi người dùng bấm "Phát tín hiệu" trong Dialog nhập ghi chú
+  /// Hàm chạy khi người dùng bấm "Phát tín hiệu"
   Future<void> sendSosAlert() async {
     final note = noteController.text.trim();
     if (note.isEmpty) {
-      CustomAlert.showWarning('Vui lòng nhập chi tiết sự cố');
+      CustomAlert.showWarning('emergency_note_empty_warning'.tr);
       return;
     }
 
     try {
       isLoading.value = true;
       
-      // Lấy tọa độ (Demo Mode không yêu cầu quyền GPS)
+      // 1. Lấy tọa độ GPS chính xác (hoặc vị trí mô phỏng trên Web Demo)
       double lat = DemoConfig.currentSimulatedPosition.latitude;
       double lng = DemoConfig.currentSimulatedPosition.longitude;
-
       if (!DemoConfig.isDemoMode) {
-        Position position = await Geolocator.getCurrentPosition(
+        final Position position = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
           ),
@@ -114,10 +232,13 @@ class EmergencyController extends GetxController {
         lng = position.longitude;
       }
 
-      // Lấy số điện thoại chuẩn từ Storage
-      final phoneNumber = StorageService.to.getPhoneNumber() ?? 
-                          StorageService.to.getUsername() ?? '';
+      // 2. Lấy thông tin tài khoản hiện tại từ Storage
+      final currentPhone = StorageService.to.getPhoneNumber() ?? '';
+      final currentUsername = StorageService.to.getUsername() ?? '';
+      final currentUserId = StorageService.to.getUserId();
+      final phoneNumber = currentPhone.isNotEmpty ? currentPhone : currentUsername;
 
+      // 3. Gửi lên Server
       final result = await _sosRepo.createSosAlert(
         lat: lat,
         lng: lng,
@@ -125,57 +246,76 @@ class EmergencyController extends GetxController {
         phoneNumber: phoneNumber,
       );
 
+      // 4. Cập nhật state & lưu Storage gắn với tài khoản của người dùng
       activeSosId.value = result.sosId;
-      
-      // Đóng dialog trước khi chuyển màn hình
-      if (Get.isDialogOpen!) Get.back(); 
-      
-      Get.to(() => SosActiveScreen());
-      CustomAlert.showSuccess('Đã phát tín hiệu cứu hộ!');
+      activeSosLat.value = lat;
+      activeSosLng.value = lng;
+      activeSosNote.value = note;
+      isSosActive.value = true;
+      isSheetMinimized.value = false;
 
+      await StorageService.to.saveActiveSos(
+        sosId: result.sosId,
+        lat: lat,
+        lng: lng,
+        note: note,
+        userId: currentUserId,
+        phoneNumber: currentPhone,
+        username: currentUsername,
+      );
+
+      // 5. Đóng dialog nhập ghi chú
+      if (Get.isDialogOpen ?? false) {
+        Get.back();
+      }
+
+      // 6. Quay về Home nếu đang ở màn hình khác
+      if (Get.currentRoute != Routes.HOME) {
+        Get.until((route) => Get.currentRoute == Routes.HOME || route.isFirst);
+      }
+
+      // 7. Chuyển ngay sang tab Bản đồ (Map)
+      if (Get.isRegistered<HomeController>()) {
+        Get.find<HomeController>().changeTab(1);
+      }
+
+      // 8. Di chuyển camera bản đồ đến đúng tọa độ GPS của người dùng
+      if (Get.isRegistered<MapController>()) {
+        Get.find<MapController>().moveToLocation(
+          LatLng(lat, lng),
+          zoom: 16.0,
+        );
+      }
     } catch (e) {
-      CustomAlert.showError('Không thể phát tín hiệu: $e');
+      CustomAlert.showError('emergency_send_error'.trParams({'error': e.toString()}));
     } finally {
       isLoading.value = false;
       noteController.clear(); 
     }
   }
 
-  /// Hàm Hủy và Hoàn thành (Cũng không cần dọn Cache nữa)
-  Future<void> cancelActiveSos() async {
+  /// Đóng tín hiệu SOS (Duy nhất 1 nút bấm đóng/kết thúc SOS)
+  Future<void> closeActiveSos() async {
     try {
       isLoading.value = true;
-      if (activeSosId.value.isNotEmpty) {
-        await _sosRepo.cancelSosAlert(activeSosId.value);
+      final id = activeSosId.value;
+      if (id.isNotEmpty) {
+        await _sosRepo.cancelSosAlert(id);
       }
 
-      SosStreamService.to.sosList.removeWhere((sos) => sos.sosId == activeSosId.value);
-      CustomAlert.showSuccess('Đã hủy tín hiệu cứu hộ');
-    } catch (e) {
-      CustomAlert.showError('Lỗi: $e');
-    } finally {
-      activeSosId.value = ''; 
-      isLoading.value = false;
-      Get.back();
-    }
-  }
-
-  /// Hàm chạy khi người dùng báo cáo Đã giải quyết (Nút chữ V)
-  Future<void> resolveActiveSos() async {
-    try {
-      isLoading.value = true;
-      if (activeSosId.value.isNotEmpty) {
-        await _sosRepo.resolveSosAlert(activeSosId.value);
+      final currentUserId = StorageService.to.getUserId();
+      if (Get.isRegistered<SosStreamService>()) {
+        SosStreamService.to.sosList.removeWhere((sos) => sos.sosId == id);
       }
+      await StorageService.to.clearActiveSos(userId: currentUserId);
 
-      SosStreamService.to.sosList.removeWhere((sos) => sos.sosId == activeSosId.value);
-      CustomAlert.showSuccess('Sự cố của bạn đã được giải quyết!');
+      resetSosState();
+
+      CustomAlert.showSuccess('emergency_closed_success'.tr);
     } catch (e) {
-      CustomAlert.showError('Lỗi khi cập nhật trạng thái : $e');
+      CustomAlert.showError('emergency_close_error'.trParams({'error': e.toString()}));
     } finally {
-      activeSosId.value = '';
       isLoading.value = false;
-      Get.back(); 
     }
   }
 

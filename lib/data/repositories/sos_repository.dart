@@ -1,25 +1,15 @@
-import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
+
 import '../../config/demo_config.dart';
-import '../../services/storage_service.dart';
 import '../models/sos_model.dart';
+import '../services/api_service.dart';
 import '../services/sos_stream_service.dart';
 
 class SosRepository {
-  final Dio _dio = Dio();
-  final String _baseUrl = dotenv.env['BASE_URL'] ?? '';
+  final ApiService _apiService = ApiService();
 
-  // Cấu hình Header chứa Token
-  Options get _options {
-    final token = StorageService.to.getToken();
-    return Options(
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-    );
-  }
+  // Dùng chung in-flight request khi nhiều service cùng gọi getActiveSosAlerts() lúc khởi động
+  static Future<List<SosResponseDTO>>? _inflightActiveSos;
 
   // 1. Gọi API POST /sos/alert (Phát tín hiệu)
   Future<SosResponseDTO> createSosAlert({
@@ -46,14 +36,13 @@ class SosRepository {
     }
 
     try {
-      final response = await _dio.post(
-        '$_baseUrl/sos/alert',
-        options: _options,
+      final response = await _apiService.dio.post(
+        '/sos/alert',
         data: {
           'latitude': lat,
           'longitude': lng,
           'note': note,
-          'phoneNumber': phoneNumber, 
+          'phoneNumber': phoneNumber,
         },
       );
       return SosResponseDTO.fromJson(response.data);
@@ -71,7 +60,7 @@ class SosRepository {
       return;
     }
     try {
-      await _dio.delete('$_baseUrl/sos/$sosId', options: _options);
+      await _apiService.dio.delete('/sos/$sosId');
     } catch (e) {
       throw Exception('Lỗi khi hủy SOS: $e');
     }
@@ -86,28 +75,40 @@ class SosRepository {
       return;
     }
     try {
-      await _dio.patch(
-        '$_baseUrl/sos/$sosId/status',
-        options: _options,
-        queryParameters: {'status': 'RESOLVED'}, // Hoặc trạng thái backend bạn quy định
+      await _apiService.dio.patch(
+        '/sos/$sosId/status',
+        queryParameters: {'status': 'RESOLVED'},
       );
     } catch (e) {
       throw Exception('Lỗi khi cập nhật trạng thái SOS: $e');
     }
   }
 
-  // Lấy danh sách SOS đang tồn tại
-  Future<List<SosResponseDTO>> getActiveSosAlerts() async {
+  // Lấy danh sách SOS đang tồn tại (tự động gộp các request trùng nhau tại cùng một thời điểm)
+  Future<List<SosResponseDTO>> getActiveSosAlerts() {
+    if (_inflightActiveSos != null) {
+      return _inflightActiveSos!;
+    }
+    _inflightActiveSos = _fetchActiveSosAlerts().whenComplete(() {
+      _inflightActiveSos = null;
+    });
+    return _inflightActiveSos!;
+  }
+
+  Future<List<SosResponseDTO>> _fetchActiveSosAlerts() async {
     if (DemoConfig.isDemoMode) {
-      if (Get.isRegistered<SosStreamService>()) {
+      if (Get.isRegistered<SosStreamService>() &&
+          SosStreamService.to.sosList.isNotEmpty) {
         return SosStreamService.to.sosList.toList();
       }
       return DemoConfig.getInitialSampleSosList();
     }
     try {
-      final response = await _dio.get('$_baseUrl/sos/active', options: _options);
-      final List data = response.data;
-      return data.map((json) => SosResponseDTO.fromJson(json)).toList();
+      final response = await _apiService.dio.get('/sos/active');
+      final List data = response.data as List;
+      return data
+          .map((json) => SosResponseDTO.fromJson(json as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       throw Exception('Lỗi khi lấy danh sách SOS: $e');
     }

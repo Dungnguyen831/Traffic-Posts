@@ -6,26 +6,24 @@ import '../../../data/repositories/auth_repository.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/storage_service.dart';
 import '../../../widgets/custom_dialog.dart';
+import '../../emergency/controllers/emergency_controller.dart';
 
 class LoginController extends GetxController {
   var rememberMe = false.obs;
   var isLoading = false.obs;
-  var isPasswordHidden = true.obs;
 
   final AuthRepository _authRepository = Get.find<AuthRepository>();
   final StorageService _storageService = Get.find<StorageService>();
 
-  late TextEditingController usernameController;
-  late TextEditingController passwordController;
+  final TextEditingController usernameController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
 
-  final usernameFocusNode = FocusNode();
-  final passwordFocusNode = FocusNode();
+  final FocusNode usernameFocusNode = FocusNode();
+  final FocusNode passwordFocusNode = FocusNode();
 
   @override
   void onInit() {
     super.onInit();
-    usernameController = TextEditingController();
-    passwordController = TextEditingController();
 
     // Clear focus and keyboard state on init to prevent keyboard event issues
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -36,23 +34,17 @@ class LoginController extends GetxController {
 
   @override
   void onClose() {
-    // Unfocus before disposing to clear keyboard state
+    // Unfocus before closing to clear keyboard state
     usernameFocusNode.unfocus();
     passwordFocusNode.unfocus();
-
-    usernameController.dispose();
-    passwordController.dispose();
-    usernameFocusNode.dispose();
-    passwordFocusNode.dispose();
+    // Do not call dispose() on text controllers here to prevent
+    // 'TextEditingController was used after being disposed' crash
+    // if LoginController is reused across navigation/logout cycles.
     super.onClose();
   }
 
   void toggleRememberMe(bool? value) {
     rememberMe.value = value ?? false;
-  }
-
-  void togglePasswordVisibility() {
-    isPasswordHidden.value = !isPasswordHidden.value;
   }
 
   Future<void> login() async {
@@ -87,15 +79,10 @@ class LoginController extends GetxController {
         province: loginResponse.province,
         relativePhone: loginResponse.relativePhone,
         phoneNumber: loginResponse.phoneNumber,
+        reputationScore: loginResponse.reputationScore,
+        badge: loginResponse.badge,
+        canCreatePost: loginResponse.canCreatePost,
       );
-
-      debugPrint('==== 🕵️ KIỂM TRA KHO LƯU TRỮ SAU KHI ĐĂNG NHẬP ====');
-      debugPrint('ID: ${StorageService.to.getUserId()}');
-      debugPrint('Username: ${StorageService.to.getUsername()}');
-      debugPrint('Họ và tên: ${StorageService.to.getFullName()}');
-      debugPrint('SĐT Người thân: ${StorageService.to.getRelativePhone()}');
-      debugPrint('👉 SĐT CỦA TÔI: ${StorageService.to.getPhoneNumber()}');
-      debugPrint('===================================================');
 
       // Save credentials for auto-login if rememberMe is checked
       if (rememberMe.value) {
@@ -105,6 +92,13 @@ class LoginController extends GetxController {
         );
       } else {
         await _storageService.clearCredentials();
+      }
+
+      // Kiểm tra và khôi phục ngay phiên SOS của userId vừa đăng nhập (nếu EmergencyController đã đăng ký)
+      if (Get.isRegistered<EmergencyController>()) {
+        await Get.find<EmergencyController>().checkAndRestoreActiveSos(
+          targetUserId: loginResponse.id,
+        );
       }
 
       // Navigate to home page on successful login

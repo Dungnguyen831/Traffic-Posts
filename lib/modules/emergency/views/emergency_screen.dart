@@ -100,9 +100,9 @@ class EmergencyScreen extends GetView<EmergencyController> {
                   title: 'emergency_title_1'.tr,
                   message: controller.selectedOption.value == 0
                       ? 'emergency_hint'.tr
-                      : 'Gọi số cứu thương 115?',
+                      : 'emergency_call_115_confirm'.tr,
                   confirmText: 'emergency_button'.tr,
-                  cancelText: 'Hủy',
+                  cancelText: 'cancel'.tr,
                   type: DialogType.warning,
                   onConfirm: controller.onContinue,
                 );
@@ -217,7 +217,7 @@ class EmergencyScreen extends GetView<EmergencyController> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Chi tiết sự cố',
+                'emergency_incident_details'.tr,
                 style: TextStyle(
                   fontSize: 20.sp, 
                   fontWeight: FontWeight.bold,
@@ -231,7 +231,7 @@ class EmergencyScreen extends GetView<EmergencyController> {
                 controller: controller.noteController,
                 maxLines: 4,
                 decoration: InputDecoration(
-                  hintText: 'VD: Xe bị thủng lốp, hết xăng...',
+                  hintText: 'emergency_incident_hint'.tr,
                   hintStyle: TextStyle(color: AppTheme.subTextColor), 
                   filled: true,
                   fillColor: AppTheme.inputFillColor, 
@@ -251,7 +251,7 @@ class EmergencyScreen extends GetView<EmergencyController> {
                 children: [
                   Expanded(
                     child: AppButton(
-                      text: 'Hủy',
+                      text: 'cancel'.tr,
                       type: ButtonType.secondary, 
                       onPressed: () {
                         // Vẫn chặn không cho Hủy nếu đang gửi dữ liệu
@@ -263,7 +263,7 @@ class EmergencyScreen extends GetView<EmergencyController> {
                   
                   Expanded(
                     child: Obx(() => AppButton(
-                      text: 'Phát tín hiệu',
+                      text: 'emergency_send_sos_button'.tr,
                       type: ButtonType.primary,
                       isLoading: controller.isLoading.value, 
                       onPressed: () => controller.sendSosAlert(),

@@ -1,57 +1,101 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fm;
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
 import 'package:traffic_app/theme/app_theme.dart';
 
-import '../../../config/demo_config.dart';
+import '../../emergency/controllers/emergency_controller.dart';
+import '../../../widgets/app_glass_container.dart';
 import '../controllers/map_controller.dart';
+import '../widgets/map_filter_bar.dart';
 
 class MapView extends GetView<MapController> {
   const MapView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Đảm bảo không gian hiển thị toàn màn hình, không bị co lại chiều cao 0
     return SizedBox.expand(
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // flutter_map Engine - Đảm bảo kích thước toàn màn hình với Positioned.fill
+          // flutter_map Engine (Raster Tiles MapTiler 256@2x mượt mà, ổn định tuyệt đối)
           Positioned.fill(
             child: fm.FlutterMap(
               mapController: controller.mapEngineController,
               options: fm.MapOptions(
                 initialCenter: controller.center,
-                initialZoom: 14.0,
+                initialZoom: 15.5,
                 minZoom: 3.0,
-                maxZoom: 19.0,
+                maxZoom: 21.0,
+                keepAlive: true,
+                backgroundColor: AppTheme.mapCanvasColor,
                 onMapReady: controller.onMapReady,
+                onPositionChanged: controller.onMapPositionChanged,
                 interactionOptions: const fm.InteractionOptions(
                   flags: fm.InteractiveFlag.all,
                 ),
               ),
               children: [
-                // Tile Layer với OpenStreetMap, fallback mirror, và User Agent chuẩn
-                Obx(
-                  () => fm.TileLayer(
+                // Tile Layer (Raster Tiles MapTiler 256@2x phóng to chữ, sắc nét, có caching)
+                Obx(() {
+                  final isNormalMap =
+                      controller.currentMapType.value == AppMapType.normal;
+                  final useMapTiler = isNormalMap && controller.hasMapTilerKey;
+                  return fm.TileLayer(
                     urlTemplate: controller.currentTileUrl,
-                    fallbackUrl: controller.fallbackTileUrl,
+                    subdomains: isNormalMap && !useMapTiler
+                        ? const ['a', 'b', 'c']
+                        : const <String>[],
+                    panBuffer: 1,
+                    tileUpdateTransformer: fm.TileUpdateTransformers.throttle(
+                      const Duration(milliseconds: 100),
+                    ),
+                    tileDisplay: const fm.TileDisplay.fadeIn(
+                      duration: Duration(milliseconds: 120),
+                    ),
+                    retinaMode: false,
+                    maxNativeZoom: 19,
                     userAgentPackageName: 'com.trafficapp.app',
-                    maxZoom: 19,
-                  ),
-                ),
+                    maxZoom: 21,
+                  );
+                }),
 
-                // Polyline Layer cho các tuyến đường
+                // Polyline Layer cho các tuyến đường (dùng .toList() để kích hoạt lắng nghe RxList của GetX)
                 Obx(
                   () => fm.PolylineLayer(
                     polylines: controller.polylines.toList(),
                   ),
                 ),
 
-                // Marker Layer cho Search result, Bài viết tagged, và Sự cố SOS
+                // Circle Layer cho Bán kính lọc quanh vị trí người dùng
+                Obx(() {
+                  final radiusKm = controller.selectedRadiusKm.value;
+                  final userLoc = controller.userLocation.value;
+                  if (radiusKm == null || userLoc == null) {
+                    return const fm.CircleLayer(circles: <fm.CircleMarker>[]);
+                  }
+
+                  return fm.CircleLayer(
+                    circles: [
+                      fm.CircleMarker(
+                        point: userLoc,
+                        radius: radiusKm * 1000,
+                        useRadiusInMeter: true,
+                        color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                        borderColor: AppTheme.primaryColor.withValues(
+                          alpha: 0.45,
+                        ),
+                        borderStrokeWidth: 1.5,
+                      ),
+                    ],
+                  );
+                }),
+
+                // Marker Layer (dùng .toList() để kích hoạt lắng nghe RxList của GetX)
                 Obx(
                   () => fm.MarkerLayer(
+                    rotate: true,
                     markers: controller.markers.toList(),
                   ),
                 ),
@@ -59,204 +103,175 @@ class MapView extends GetView<MapController> {
             ),
           ),
 
-          // Search Bar with Suggestions
-          Positioned(
-            top: 50,
-            left: 20,
-            right: 20,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 15),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(30),
+          // Search Bar & Filter Bar với hiệu ứng Liquid Glass kế thừa từ thanh điều hướng
+          Obx(() {
+            final isEmergencyRegistered =
+                Get.isRegistered<EmergencyController>();
+            final isSosActive =
+                isEmergencyRegistered &&
+                Get.find<EmergencyController>().isSosActive.value;
+
+            if (isSosActive) {
+              return const SizedBox.shrink();
+            }
+
+            final hasSuggestions = controller.placeSuggestions.isNotEmpty;
+
+            return Positioned(
+              top: 50.h,
+              left: 16.w,
+              right: 16.w,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Thanh tìm kiếm với hiệu ứng Liquid Glass
+                  AppGlassContainer(
+                    borderRadius: 30.r,
+                    glassColor: Colors.white.withValues(alpha: 0.60),
+                    gradientColors: [
+                      Colors.white.withValues(alpha: 0.85),
+                      Colors.white.withValues(alpha: 0.68),
+                    ],
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      width: 1.0,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
                     ],
-                  ),
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: TextField(
-                      controller: controller.searchController,
-                      decoration: const InputDecoration(
-                        hintText: 'Tìm kiếm địa điểm...',
-                        border: InputBorder.none,
-                        icon: Icon(IconlyBroken.search, color: Colors.grey),
+                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: TextField(
+                        controller: controller.searchController,
+                        style: const TextStyle(color: AppTheme.textColor),
+                        decoration: InputDecoration(
+                          hintText: 'map_search_hint'.tr,
+                          hintStyle: const TextStyle(
+                            color: AppTheme.subTextColor,
+                          ),
+                          border: InputBorder.none,
+                          icon: const Icon(
+                            IconlyBroken.search,
+                            color: AppTheme.subTextColor,
+                          ),
+                        ),
+                        onChanged: controller.fetchSuggestions,
+                        onSubmitted: controller.searchLocation,
                       ),
-                      onChanged: (value) {
-                        controller.fetchSuggestions(value);
-                      },
-                      onSubmitted: (value) {
-                        controller.searchLocation(value);
-                      },
                     ),
                   ),
-                ),
-                Obx(
-                  () => controller.placeSuggestions.isNotEmpty
-                      ? Container(
-                          margin: const EdgeInsets.only(top: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            padding: EdgeInsets.zero,
-                            itemCount: controller.placeSuggestions.length,
-                            itemBuilder: (context, index) {
-                              final suggestion =
-                                  controller.placeSuggestions[index];
-                              return ListTile(
-                                title: Text(suggestion['description']),
-                                leading: const Icon(
-                                  IconlyBroken.location,
-                                  color: Colors.grey,
-                                ),
-                                onTap: () {
-                                  controller.selectSuggestion(suggestion);
-                                  FocusScope.of(context).unfocus();
-                                },
-                              );
+
+                  // Thanh bộ lọc theo thời gian, tag và bán kính với hiệu ứng Glass
+                  if (!hasSuggestions)
+                    Padding(
+                      padding: EdgeInsets.only(top: 8.h),
+                      child: const MapFilterBar(),
+                    ),
+
+                  // Danh sách gợi ý địa điểm (kế thừa Glass)
+                  if (hasSuggestions)
+                    AppGlassContainer(
+                      borderRadius: 16.r,
+                      margin: EdgeInsets.only(top: 8.h),
+                      glassColor: Colors.white.withValues(alpha: 0.68),
+                      gradientColors: [
+                        Colors.white.withValues(alpha: 0.94),
+                        Colors.white.withValues(alpha: 0.82),
+                      ],
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        width: 1.0,
+                      ),
+                      padding: EdgeInsets.zero,
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        itemCount: controller.placeSuggestions.length,
+                        itemBuilder: (context, index) {
+                          final suggestion = controller.placeSuggestions[index];
+                          return ListTile(
+                            title: Text(
+                              suggestion['description'],
+                              style: const TextStyle(color: AppTheme.textColor),
+                            ),
+                            leading: const Icon(
+                              IconlyBroken.location,
+                              color: AppTheme.subTextColor,
+                            ),
+                            onTap: () {
+                              controller.selectSuggestion(suggestion);
+                              FocusScope.of(context).unfocus();
                             },
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-              ],
-            ),
-          ),
-
-          // Demo Mode Status Pill Badge (Web Demo)
-          if (DemoConfig.isDemoMode)
-            Positioned(
-              top: 105,
-              left: 20,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.75),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.greenAccent.withOpacity(0.6),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.greenAccent,
-                        shape: BoxShape.circle,
+                          );
+                        },
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Web Demo • Vị trí cố định',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
-            ),
+            );
+          }),
 
-          // Control Buttons (Thao tác mượt mà bằng click chuột)
-          Positioned(
-            right: 12,
-            bottom: 95,
-            child: Column(
-              children: [
-                // Zoom In Button (+)
-                FloatingActionButton.small(
-                  heroTag: 'zoom_in',
-                  onPressed: controller.zoomIn,
-                  backgroundColor: AppTheme.backgroundColor,
-                  tooltip: 'Phóng to bản đồ',
-                  child: const Icon(Icons.add, color: Colors.black87),
-                ),
-                const SizedBox(height: 8),
+          // Control Buttons (Map Type, My Location) - Tự động trượt lên khi mở sheet SOS
+          Obx(() {
+            final isEmergencyRegistered =
+                Get.isRegistered<EmergencyController>();
+            final isSosActive =
+                isEmergencyRegistered &&
+                Get.find<EmergencyController>().isSosActive.value;
+            final isSheetOpen =
+                isSosActive &&
+                !Get.find<EmergencyController>().isSheetMinimized.value;
 
-                // Zoom Out Button (-)
-                FloatingActionButton.small(
-                  heroTag: 'zoom_out',
-                  onPressed: controller.zoomOut,
-                  backgroundColor: AppTheme.backgroundColor,
-                  tooltip: 'Thu nhỏ bản đồ',
-                  child: const Icon(Icons.remove, color: Colors.black87),
-                ),
-                const SizedBox(height: 8),
-
-                // Map Type Toggle
-                FloatingActionButton(
-                  heroTag: 'map_type',
-                  onPressed: controller.toggleMapType,
-                  backgroundColor: AppTheme.backgroundColor,
-                  tooltip: 'Chuyển kiểu bản đồ',
-                  child: const Icon(Icons.layers, color: Colors.black87),
-                ),
-                const SizedBox(height: 10),
-
-                // Traffic Toggle
-                Obx(
-                  () => FloatingActionButton(
-                    heroTag: 'traffic',
-                    onPressed: controller.toggleTraffic,
-                    backgroundColor: controller.isTrafficEnabled.value
-                        ? Colors.blue
-                        : AppTheme.backgroundColor,
-                    tooltip: 'Bật/tắt lớp giao thông',
-                    child: Icon(
-                      Icons.traffic,
-                      color: controller.isTrafficEnabled.value
-                          ? Colors.white
-                          : Colors.black87,
+            return AnimatedPositioned(
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeInOutCubic,
+              right: 12.w,
+              bottom: isSheetOpen ? 300.h : 90.h,
+              child: Column(
+                children: [
+                  // Map Type Toggle
+                  FloatingActionButton(
+                    heroTag: 'map_type',
+                    onPressed: controller.toggleMapType,
+                    backgroundColor: AppTheme.backgroundColor,
+                    child: const Icon(
+                      Icons.layers_rounded,
+                      color: AppTheme.textColor,
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
+                  SizedBox(height: 10.h),
 
-                // My Location
-                FloatingActionButton(
-                  heroTag: 'my_location',
-                  onPressed: controller.goToMyLocation,
-                  backgroundColor: AppTheme.backgroundColor,
-                  tooltip: 'Vị trí của tôi',
-                  child: Obx(
-                    () => controller.isLoading.value
-                        ? const CircularProgressIndicator(strokeWidth: 2)
-                        : const Icon(IconlyBold.location, color: Colors.black87),
+                  // My Location
+                  FloatingActionButton(
+                    heroTag: 'my_location',
+                    onPressed: controller.goToMyLocation,
+                    backgroundColor: AppTheme.backgroundColor,
+                    child: Obx(
+                      () => controller.isLoading.value
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppTheme.primaryColor,
+                              ),
+                            )
+                          : const Icon(
+                              IconlyBold.location,
+                              color: AppTheme.primaryColor,
+                            ),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );

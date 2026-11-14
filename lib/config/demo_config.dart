@@ -3,6 +3,7 @@ import 'package:latlong2/latlong.dart';
 import '../data/models/location_model.dart';
 import '../data/models/sos_model.dart';
 import '../data/models/traffic_post_model.dart';
+import '../data/models/user_info_model.dart';
 
 /// Cấu hình và Dữ liệu Mẫu cho chế độ Web Demo
 class DemoConfig {
@@ -48,6 +49,8 @@ class DemoConfig {
         ),
         likes: 18,
         isLiked: false,
+        userReputationScore: 145,
+        userBadge: 'Chuyên gia giao thông',
         timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
       ),
       TrafficPostModel(
@@ -66,6 +69,8 @@ class DemoConfig {
         ),
         likes: 9,
         isLiked: true,
+        userReputationScore: 112,
+        userBadge: 'Người dẫn đường',
         timestamp: DateTime.now().subtract(const Duration(minutes: 15)),
       ),
       TrafficPostModel(
@@ -84,6 +89,8 @@ class DemoConfig {
         ),
         likes: 31,
         isLiked: false,
+        userReputationScore: 138,
+        userBadge: 'Chuyên gia giao thông',
         timestamp: DateTime.now().subtract(const Duration(minutes: 25)),
       ),
       TrafficPostModel(
@@ -102,6 +109,8 @@ class DemoConfig {
         ),
         likes: 54,
         isLiked: false,
+        userReputationScore: 185,
+        userBadge: 'Chuyên gia giao thông',
         timestamp: DateTime.now().subtract(const Duration(minutes: 40)),
       ),
       TrafficPostModel(
@@ -120,7 +129,99 @@ class DemoConfig {
         ),
         likes: 12,
         isLiked: false,
+        userReputationScore: 105,
+        userBadge: 'Người dẫn đường',
         timestamp: DateTime.now().subtract(const Duration(minutes: 50)),
+      ),
+    ];
+  }
+
+  /// Danh sách bảng xếp hạng người dùng mẫu cho Web Demo
+  static List<UserInfoModel> getSampleRankingUsers() {
+    return [
+      UserInfoModel(
+        id: 104,
+        username: 'csgt_so2',
+        fullname: 'Đội CSGT Số 2',
+        avatarUrl: demoUserAvatar,
+        follow: true,
+        followersCount: 1580,
+        followingsCount: 12,
+        reputationScore: 185,
+        badge: 'Chuyên gia giao thông',
+        canCreatePost: true,
+      ),
+      UserInfoModel(
+        id: 101,
+        username: 'vannam_hn',
+        fullname: 'Nguyễn Văn Nam',
+        avatarUrl: demoUserAvatar,
+        follow: true,
+        followersCount: 420,
+        followingsCount: 85,
+        reputationScore: 145,
+        badge: 'Chuyên gia giao thông',
+        canCreatePost: true,
+      ),
+      UserInfoModel(
+        id: 103,
+        username: 'hoanganh_le',
+        fullname: 'Lê Hoàng Anh',
+        avatarUrl: demoUserAvatar,
+        follow: false,
+        followersCount: 310,
+        followingsCount: 64,
+        reputationScore: 138,
+        badge: 'Chuyên gia giao thông',
+        canCreatePost: true,
+      ),
+      UserInfoModel(
+        id: 1,
+        username: 'demo_user',
+        fullname: 'Người dùng Demo',
+        avatarUrl: demoUserAvatar,
+        follow: false,
+        followersCount: 128,
+        followingsCount: 45,
+        reputationScore: 125,
+        badge: 'Chuyên gia giao thông',
+        canCreatePost: true,
+      ),
+      UserInfoModel(
+        id: 102,
+        username: 'maitran_bd',
+        fullname: 'Trần Thị Mai',
+        avatarUrl: demoUserAvatar,
+        follow: true,
+        followersCount: 195,
+        followingsCount: 92,
+        reputationScore: 112,
+        badge: 'Người dẫn đường',
+        canCreatePost: true,
+      ),
+      UserInfoModel(
+        id: 105,
+        username: 'quochuy_pham',
+        fullname: 'Phạm Quốc Huy',
+        avatarUrl: demoUserAvatar,
+        follow: false,
+        followersCount: 88,
+        followingsCount: 53,
+        reputationScore: 105,
+        badge: 'Người dẫn đường',
+        canCreatePost: true,
+      ),
+      UserInfoModel(
+        id: 106,
+        username: 'ducminh_vu',
+        fullname: 'Vũ Đức Minh',
+        avatarUrl: demoUserAvatar,
+        follow: false,
+        followersCount: 64,
+        followingsCount: 41,
+        reputationScore: 98,
+        badge: 'Người dẫn đường',
+        canCreatePost: true,
       ),
     ];
   }

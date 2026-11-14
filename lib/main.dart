@@ -37,133 +37,100 @@ class WebAppScrollBehavior extends MaterialScrollBehavior {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Firebase chỉ khởi tạo trên Native Mobile (bỏ qua hoàn toàn trên Web)
+  // Khởi tạo Firebase (Bỏ qua trên Web nếu chưa cấu hình FirebaseOptions cho Web)
   if (!kIsWeb) {
     try {
       await Firebase.initializeApp();
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     } catch (e) {
-      debugPrint('Firebase init error: $e');
+      debugPrint("Firebase init error: $e");
     }
   }
 
-  // 2. Load .env an toàn
+  // Load environment variables
   try {
     await dotenv.load(fileName: ".env");
   } catch (e) {
-    debugPrint('.env load warning: $e');
+    debugPrint("Dotenv load warning: $e");
   }
 
-  // 3. Khởi tạo Localization an toàn
+  // Initialize localization
+  await LocalizationService.init();
+
+  // Initialize StorageService trước vì các service/repo sau có thể cần
+  final storageService = await Get.putAsync(() => StorageService().init());
+
+  // Initialize AssetsService (preload animations)
+  await Get.putAsync(() => AssetsService().init());
+
+  // Initialize ImagePickerService
+  await Get.putAsync(() => ImagePickerService().init());
+
+  // Khởi tạo NotificationService
   try {
-    await LocalizationService.init();
+    await Get.putAsync(() => NotificationService().init());
   } catch (e) {
-    debugPrint('LocalizationService init warning: $e');
+    debugPrint("NotificationService init warning on web: $e");
   }
 
-  // 4. Khởi tạo StorageService an toàn
-  late StorageService storageService;
-  try {
-    storageService = await Get.putAsync(() => StorageService().init());
-  } catch (e) {
-    debugPrint('StorageService init error: $e');
-    storageService = Get.put(StorageService());
-  }
-
-  // 5. Khởi tạo AssetsService an toàn (tránh đơ main)
-  try {
-    if (!kIsWeb) {
-      await Get.putAsync(
-        () => AssetsService().init().then((_) => AssetsService()),
-      );
-    } else {
-      Get.put(AssetsService());
-    }
-  } catch (e) {
-    debugPrint('AssetsService init error: $e');
-    Get.put(AssetsService());
-  }
-
-  // 6. Khởi tạo ImagePickerService an toàn
-  try {
-    await Get.putAsync(() => ImagePickerService().init());
-  } catch (e) {
-    debugPrint('ImagePickerService init error: $e');
-    Get.put(ImagePickerService());
-  }
-
-  // 7. Khởi tạo NotificationService an toàn (bỏ qua Native FCM trên Web)
-  try {
-    if (!kIsWeb) {
-      await Get.putAsync(() => NotificationService().init());
-    } else {
-      final noti = NotificationService();
-      noti.fcmToken.value = 'demo_web_fcm_token';
-      Get.put(noti);
-    }
-  } catch (e) {
-    debugPrint('NotificationService init error: $e');
-    final noti = NotificationService();
-    noti.fcmToken.value = 'demo_web_fcm_token';
-    Get.put(noti);
-  }
-
-  // 8. Xử lý khởi động: Tự động kích hoạt Web Demo
-  String initialRoute = Routes.HOME;
+  // Check auto login
+  String initialRoute = AppPages.INITIAL;
 
   if (kIsWeb || DemoConfig.isDemoMode) {
-    // Luôn đảm bảo tài khoản demo đã được lưu để app coi như đã đăng nhập
-    try {
-      await storageService.saveUserInfo(
-        username: 'Dung',
-        fullname: 'Nguyễn Anh Dũng',
-        province: 'Hà Nội',
-        relativePhone: '0987654321',
-        phoneNumber: '0912345678',
-      );
-      await storageService.setToken('demo_access_token');
-    } catch (e) {
-      debugPrint('Storage demo user save error: $e');
-    }
-
-    // Khởi tạo Stream/Timer giả lập sự kiện giao thông và di chuyển xe
-    try {
-      Get.put(TrafficSimulatorService());
-    } catch (e) {
-      debugPrint('TrafficSimulatorService register error: $e');
-    }
-
-    // Điều hướng thẳng vào màn hình Map / Dashboard chính
+    await storageService.setToken('demo_token_web_static');
+    await storageService.saveUserInfo(
+      userId: 1,
+      username: 'demo_user',
+      fullname: 'Người dùng Demo',
+      province: 'Hà Nội',
+      relativePhone: '0988888888',
+      phoneNumber: '0983168888',
+      avatarUrl: DemoConfig.demoUserAvatar,
+      reputationScore: 125,
+      badge: 'Chuyên gia giao thông',
+      canCreatePost: true,
+    );
+    // Khởi tạo dịch vụ mô phỏng giao thông thời gian thực cho Web Demo
+    Get.put(TrafficSimulatorService());
     initialRoute = Routes.HOME;
   } else {
-    // Trên Native Mobile: Kiểm tra auto login bình thường
-    initialRoute = AppPages.INITIAL;
-    try {
-      final credentials = storageService.getCredentials();
-      if (credentials != null) {
+    final credentials = storageService.getCredentials();
+
+    if (credentials != null) {
+      try {
         final authRepository = AuthRepository();
-        final loginResponse = await authRepository.login(
-          LoginRequest(
-            username: credentials['username'] ?? '',
-            password: credentials['password'] ?? '',
-          ),
-        );
+        final loginResponse = await authRepository
+            .login(
+              LoginRequest(
+                username: credentials['username'] ?? '',
+                password: credentials['password'] ?? '',
+              ),
+            )
+            .timeout(const Duration(seconds: 8));
 
         // Save user information
         await storageService.saveUserInfo(
+          userId: loginResponse.id,
           username: loginResponse.username,
           fullname: loginResponse.fullname,
           province: loginResponse.province,
           relativePhone: loginResponse.relativePhone,
+          phoneNumber: loginResponse.phoneNumber,
+          reputationScore: loginResponse.reputationScore,
+          badge: loginResponse.badge,
+          canCreatePost: loginResponse.canCreatePost,
         );
 
         initialRoute = Routes.HOME;
+      } catch (e) {
+        debugPrint("Auto login failed: $e");
+        final errStr = e.toString();
+        if (errStr.contains('Đăng nhập thất bại') ||
+            errStr.contains('401') ||
+            errStr.contains('400')) {
+          await storageService.clearCredentials();
+        }
       }
-    } catch (e) {
-      debugPrint("Auto login failed: $e");
-      try {
-        await storageService.clearCredentials();
-      } catch (_) {}
     }
   }
 
@@ -189,7 +156,7 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           initialRoute: initialRoute,
           getPages: AppPages.routes,
-          unknownRoute: GetPage(name: '/404', page: () => NotFoundPage()),
+          unknownRoute: GetPage(name: '/404', page: () => const NotFoundPage()),
           translations: LocalizationService(),
           locale: LocalizationService.locale,
           fallbackLocale: LocalizationService.fallbackLocale,

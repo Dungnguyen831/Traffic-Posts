@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:iconly/iconly.dart';
 
@@ -246,8 +247,8 @@ class CustomDialog extends StatelessWidget {
     required BuildContext context,
     required String title,
     required String message,
-    String confirmText = 'Xác nhận',
-    String cancelText = 'Hủy',
+    String? confirmText,
+    String? cancelText,
     VoidCallback? onConfirm,
     VoidCallback? onCancel,
     DialogType type = DialogType.info,
@@ -257,8 +258,8 @@ class CustomDialog extends StatelessWidget {
       builder: (_) => CustomDialog(
         title: title,
         message: message,
-        buttonText: confirmText,
-        cancelText: cancelText,
+        buttonText: confirmText ?? 'confirm'.tr,
+        cancelText: cancelText ?? 'cancel'.tr,
         onPressed: onConfirm,
         onCancel: onCancel,
         type: type,

@@ -11,6 +11,7 @@ import '../../../services/assets_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_dialog.dart';
 import '../../../widgets/loading_widget.dart';
+import '../../../widgets/reputation_badge.dart';
 import '../../dashboard/widgets/post_item.dart';
 import '../../dashboard/widgets/post_item_shimmer.dart';
 import '../controllers/user_profile_controller.dart';
@@ -20,7 +21,9 @@ class UserProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(UserProfileController());
+    final String targetId =
+        Get.arguments?['userId']?.toString() ?? 'my_profile';
+    final controller = Get.put(UserProfileController(), tag: targetId);
     final heroTag = Get.arguments?['heroTag']?.toString();
     final initialAvatarUrl = Get.arguments?['initialAvatarUrl']?.toString() ??
         Get.arguments?['initialAvatar']?.toString();
@@ -63,7 +66,6 @@ class UserProfileScreen extends StatelessWidget {
                           cancelText: 'profile_cancel'.tr,
                           onConfirm: () {
                             controller.toggleUserFollow();
-                            Get.back();
                           },
                         );
                       } else {
@@ -121,170 +123,187 @@ class UserProfileScreen extends StatelessWidget {
       ),
 
       // ✅ SMART REFRESHER SỬ DỤNG CUSTOM FOOTER CỦA DASHBOARD
-      body: SmartRefresher(
-        controller: controller.refreshController,
-        scrollController: controller.scrollController,
-        enablePullDown: true,
-        enablePullUp: controller.posts.isNotEmpty,
-        header: const WaterDropHeader(),
-        footer: CustomFooter(
-          builder: (context, mode) {
-            Widget body;
-            if (mode == LoadStatus.idle) {
-              body = Text(
-                'dashboard_pull_up_load'.tr,
-                style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
+      body: Obx(
+        () => SmartRefresher(
+          controller: controller.refreshController,
+          scrollController: controller.scrollController,
+          enablePullDown: true,
+          enablePullUp: controller.posts.isNotEmpty,
+          header: const WaterDropHeader(),
+          footer: CustomFooter(
+            builder: (context, mode) {
+              Widget body;
+              if (mode == LoadStatus.idle) {
+                body = Text(
+                  'dashboard_pull_up_load'.tr,
+                  style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
+                );
+              } else if (mode == LoadStatus.loading) {
+                body = Center(child: LoadingWidget());
+              } else if (mode == LoadStatus.failed) {
+                body = Text(
+                  'dashboard_load_failed'.tr,
+                  style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
+                );
+              } else if (mode == LoadStatus.canLoading) {
+                body = Text(
+                  'dashboard_release_to_load'.tr,
+                  style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
+                );
+              } else {
+                final closeComp = AssetsService.to.closeComposition.value;
+                body = SizedBox(
+                  height: 120.h,
+                  width: 120.h,
+                  child: closeComp != null
+                      ? Lottie(
+                          composition: closeComp,
+                          fit: BoxFit.contain,
+                          repeat: true,
+                          renderCache: RenderCache.drawingCommands,
+                        )
+                      : Lottie.asset(
+                          'assets/animations/Close.json',
+                          fit: BoxFit.contain,
+                          repeat: true,
+                          renderCache: RenderCache.drawingCommands,
+                        ),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 100.0),
+                child: SizedBox(
+                  height: 140.h,
+                  child: Center(child: body),
+                ),
               );
-            } else if (mode == LoadStatus.loading) {
-              body = Center(child: LoadingWidget());
-            } else if (mode == LoadStatus.failed) {
-              body = Text(
-                'dashboard_load_failed'.tr,
-                style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
-              );
-            } else if (mode == LoadStatus.canLoading) {
-              body = Text(
-                'dashboard_release_to_load'.tr,
-                style: TextStyle(fontSize: 13.sp, color: Colors.grey[500]),
-              );
-            } else {
-              final closeComp = AssetsService.to.closeComposition.value;
-              body = SizedBox(
-                height: 120.h,
-                width: 120.h,
-                child: closeComp != null
-                    ? Lottie(
-                        composition: closeComp,
-                        fit: BoxFit.contain,
-                        repeat: true,
-                        renderCache: RenderCache.drawingCommands,
-                      )
-                    : Lottie.asset(
-                        'assets/animations/Close.json',
-                        fit: BoxFit.contain,
-                        repeat: true,
-                        renderCache: RenderCache.drawingCommands,
-                      ),
-              );
-            }
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 100.0),
-              child: SizedBox(
-                height: 140.h,
-                child: Center(child: body),
-              ),
-            );
-          },
-        ),
-        onRefresh: controller.refresh,
-        onLoading: controller.loadMore,
+            },
+          ),
+          onRefresh: controller.refresh,
+          onLoading: controller.loadMore,
 
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Obx(() {
-                final user = controller.userInfo.value;
-                final displayAvatarUrl =
-                    user?.fullAvatarUrl ?? initialAvatarUrl;
-                final displayUserName =
-                    user?.fullname ?? initialUserName ?? 'profile_loading'.tr;
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Obx(() {
+                  final user = controller.userInfo.value;
+                  final displayAvatarUrl =
+                      user?.fullAvatarUrl ?? initialAvatarUrl;
+                  final displayUserName =
+                      user?.fullname ?? initialUserName ?? 'profile_loading'.tr;
 
-                return Column(
-                  children: [
-                    SizedBox(height: 20.h),
-                    Hero(
-                      tag:
-                          heroTag ??
-                          'avatar_default_${controller.targetUserId}',
-                      child: ClipOval(
-                        child: displayAvatarUrl != null
-                            ? (displayAvatarUrl.startsWith('assets/')
-                                ? Image.asset(
-                                    displayAvatarUrl,
-                                    width: 90.w,
-                                    height: 90.w,
-                                    fit: BoxFit.cover,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            Container(
-                                      width: 90.w,
-                                      height: 90.w,
-                                      color: Colors.grey[200],
-                                      child: Icon(
-                                        IconlyBroken.profile,
-                                        size: 50.sp,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  )
-                                : CachedNetworkImage(
-                                    imageUrl: displayAvatarUrl,
-                                    width: 90.w,
-                                    height: 90.w,
-                                    fit: BoxFit.cover,
-                                    placeholder: (context, url) =>
-                                        CircularProgressIndicator(
-                                          color: AppTheme.primaryColor,
-                                        ),
-                                    errorWidget: (context, url, error) => Icon(
-                                      IconlyBroken.profile,
-                                      size: 50.sp,
-                                      color: Colors.grey,
-                                    ),
-                                  ))
-                            : Container(
-                                width: 90.w,
-                                height: 90.w,
-                                color: Colors.grey[200],
-                                child: Icon(
-                                  IconlyBroken.profile,
-                                  size: 50.sp,
-                                  color: Colors.grey,
+                  return Column(
+                    children: [
+                      SizedBox(height: 20.h),
+                      Hero(
+                        tag:
+                            heroTag ??
+                            'avatar_default_${controller.targetUserId}',
+                        child: ClipOval(
+                          child: displayAvatarUrl != null
+                              ? (displayAvatarUrl.startsWith('assets/')
+                                    ? Image.asset(
+                                        displayAvatarUrl,
+                                        width: 90.w,
+                                        height: 90.w,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : (displayAvatarUrl.startsWith('blob:') ||
+                                              displayAvatarUrl.startsWith(
+                                                'data:',
+                                              )
+                                          ? Image.network(
+                                              displayAvatarUrl,
+                                              width: 90.w,
+                                              height: 90.w,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : CachedNetworkImage(
+                                              imageUrl: displayAvatarUrl,
+                                              width: 90.w,
+                                              height: 90.w,
+                                              fit: BoxFit.cover,
+                                              placeholder: (context, url) =>
+                                                  const CircularProgressIndicator(
+                                                    color:
+                                                        AppTheme.primaryColor,
+                                                  ),
+                                              errorWidget:
+                                                  (context, url, error) => Icon(
+                                                    IconlyBroken.profile,
+                                                    size: 50.sp,
+                                                    color: Colors.grey,
+                                                  ),
+                                            )))
+                              : Container(
+                                  width: 90.w,
+                                  height: 90.w,
+                                  color: Colors.grey[200],
+                                  child: Icon(
+                                    IconlyBroken.profile,
+                                    size: 50.sp,
+                                    color: Colors.grey,
+                                  ),
                                 ),
-                              ),
-                      ),
-                    ),
-                    SizedBox(height: 12.h),
-                    SizedBox(height: 12.h),
-                    Text(
-                      displayUserName,
-                      style: TextStyle(
-                        fontSize: 18.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textColor,
-                      ),
-                    ),
-                    SizedBox(height: 28.h),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildStatItem(
-                          '${user?.followingsCount ?? 0}',
-                          'profile_stat_following'.tr,
                         ),
-                        _buildStatItem(
-                          '${user?.followersCount ?? 0}',
-                          'profile_stat_followers'.tr,
+                      ),
+                      SizedBox(height: 12.h),
+                      Text(
+                        displayUserName,
+                        style: TextStyle(
+                          fontSize: 18.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textColor,
                         ),
-                        _buildStatItem(
-                          '${controller.totalLikes.value}',
-                          'profile_stat_likes'.tr,
+                      ),
+                      if (user != null) ...[
+                        SizedBox(height: 8.h),
+                        ReputationBadgeWidget(
+                          badge: user.badge ?? 'Người dẫn đường',
+                          score: user.reputationScore ?? 100,
+                          isCompact: true,
+                          showScore: true,
                         ),
                       ],
-                    ),
-                    SizedBox(height: 24.h),
-                  ],
-                );
-              }),
-            ),
+                      SizedBox(height: 20.h),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildStatItem(
+                            '${user?.followingsCount ?? 0}',
+                            'profile_stat_following'.tr,
+                            onTap: controller.isMyProfile
+                                ? () => controller.openFollowManagement(
+                                    initialIndex: 1,
+                                  )
+                                : null,
+                          ),
+                          _buildStatItem(
+                            '${user?.followersCount ?? 0}',
+                            'profile_stat_followers'.tr,
+                            onTap: controller.isMyProfile
+                                ? () => controller.openFollowManagement(
+                                    initialIndex: 0,
+                                  )
+                                : null,
+                          ),
+                          _buildStatItem(
+                            '${controller.totalLikes.value}',
+                            'profile_stat_likes'.tr,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                    ],
+                  );
+                }),
+              ),
 
-            // ==========================================
-            // PHẦN DANH SÁCH BÀI VIẾT TÍCH HỢP SHIMMER VÀ LOTTIE
-            // ==========================================
-            Obx(() {
-              // 1. TRẠNG THÁI LOADING: Dùng SliverList + PostItemShimmer
-              if (controller.isLoading.value && controller.posts.isEmpty) {
-                return SliverPadding(
+              // ==========================================
+              // PHẦN DANH SÁCH BÀI VIẾT TÍCH HỢP SHIMMER VÀ LOTTIE
+              // ==========================================
+              if (controller.isLoading.value && controller.posts.isEmpty)
+                SliverPadding(
                   padding: EdgeInsets.symmetric(horizontal: 24.w),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
@@ -295,12 +314,9 @@ class UserProfileScreen extends StatelessWidget {
                       childCount: 3, // Hiện 3 bộ xương (skeleton)
                     ),
                   ),
-                );
-              }
-
-              // 2. TRẠNG THÁI TRỐNG: Dùng Lottie + SliverToBoxAdapter
-              if (controller.posts.isEmpty) {
-                return SliverToBoxAdapter(
+                )
+              else if (controller.posts.isEmpty)
+                SliverToBoxAdapter(
                   child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -336,28 +352,27 @@ class UserProfileScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                );
-              }
+                )
+              else
+                SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: 24.w),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      addRepaintBoundaries: false,
+                      (context, index) {
+                        final post = controller.posts[index];
+                        final postId = post.id ?? '';
+                        final userId = post.userId ?? '';
 
-              // 3. TRẠNG THÁI CÓ DỮ LIỆU: Render danh sách thật
-              return SliverPadding(
-                padding: EdgeInsets.symmetric(horizontal: 24.w),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    addRepaintBoundaries: false,
-                    (context, index) {
-                      final post = controller.posts[index];
-                      final postId = post.id ?? '';
-                      final userId = post.userId ?? '';
-
-                      return _PostKeepAlive(
-                        key: ValueKey('keep_$postId'),
-                        child: Padding(
+                        return Padding(
+                          key: ValueKey('pad_$postId'),
                           padding: EdgeInsets.only(bottom: 20.h),
                           child: RepaintBoundary(
-                            key: ValueKey(postId),
+                            key: ValueKey('${postId}_${post.content.hashCode}'),
                             child: PostItem(
-                              key: ValueKey(postId),
+                              key: ValueKey(
+                                '${postId}_${post.content.hashCode}',
+                              ),
                               post: post,
                               isLikedRx: controller.likedState(postId),
                               likeCountRx: controller.likeCount(postId),
@@ -366,61 +381,68 @@ class UserProfileScreen extends StatelessWidget {
                               onLike: () => controller.toggleLike(post),
                               onReport: () => controller.reportPost(post),
                               onFollow: () {},
+                              onEdit: controller.isMyProfile
+                                  ? () => controller.openEditPostSheet(post)
+                                  : null,
+                              onDelete: controller.isMyProfile
+                                  ? () => controller.confirmDeletePost(
+                                      context,
+                                      post,
+                                    )
+                                  : null,
                               enableHeroAvatar: false,
                             ),
                           ),
-                        ),
-                      );
-                    },
-                    childCount: controller.posts.length,
+                        );
+                      },
+                      childCount: controller.posts.length,
+                    ),
                   ),
                 ),
-              );
-            }),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildStatItem(String number, String label) {
-    return Column(
-      children: [
-        Text(
-          number,
-          style: TextStyle(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textColor,
+  Widget _buildStatItem(
+    String number,
+    String label, {
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12.r),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
+          child: Column(
+            children: [
+              Text(
+                number,
+                style: TextStyle(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textColor,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  color: onTap != null
+                      ? AppTheme.primaryColor
+                      : AppTheme.subTextColor,
+                  fontWeight: onTap != null ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ],
           ),
         ),
-        SizedBox(height: 4.h),
-        Text(
-          label,
-          style: TextStyle(fontSize: 13.sp, color: AppTheme.subTextColor),
-        ),
-      ],
+      ),
     );
-  }
-}
-
-class _PostKeepAlive extends StatefulWidget {
-  final Widget child;
-
-  const _PostKeepAlive({super.key, required this.child});
-
-  @override
-  State<_PostKeepAlive> createState() => _PostKeepAliveState();
-}
-
-class _PostKeepAliveState extends State<_PostKeepAlive>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    return widget.child;
   }
 }

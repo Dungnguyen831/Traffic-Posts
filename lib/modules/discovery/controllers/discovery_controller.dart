@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 
+import '../../../data/mock/mock_fines_data.dart';
 import '../../../data/models/fine_record_model.dart';
 import '../../../data/repositories/fine_repository.dart';
+import '../../../theme/app_theme.dart';
 
 class DiscoveryController extends GetxController {
   final FineRepository _repository = FineRepository();
 
   final searchController = TextEditingController();
+
+  final selectedVehicle = '1'.obs;
 
   final isLoading = false.obs;
   final errorMessage = ''.obs;
@@ -15,19 +20,80 @@ class DiscoveryController extends GetxController {
 
   bool get hasSearched => fineResponse.value != null || errorMessage.isNotEmpty;
 
-  Future<void> searchFines() async {
-    final plate = searchController.text.trim();
-    if (plate.isEmpty) return;
+  void setVehicle(String vehicle) {
+    if (selectedVehicle.value != vehicle) {
+      selectedVehicle.value = vehicle;
+      if (searchController.text.trim().isNotEmpty) {
+        searchFines();
+      }
+    }
+  }
+
+  Future<void> searchFines({bool forceRefresh = false}) async {
+    final plate = searchController.text.trim().toUpperCase();
+    if (plate.isEmpty) {
+      Get.snackbar(
+        'error_title'.tr,
+        'violation_sub_plate_empty'.tr,
+        backgroundColor: AppTheme.errorColor,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+        margin: EdgeInsets.all(16.r),
+        borderRadius: 12.r,
+      );
+      return;
+    }
+
+    // Biển số hợp lệ chỉ gồm chữ và số thông thường
+    if (!RegExp(r'^[A-Z0-9]{4,12}$').hasMatch(plate)) {
+      Get.snackbar(
+        'error_title'.tr,
+        'violation_sub_plate_invalid'.tr,
+        backgroundColor: AppTheme.errorColor,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+        margin: EdgeInsets.all(16.r),
+        borderRadius: 12.r,
+      );
+      return;
+    }
+
+    if (searchController.text != plate) {
+      searchController.text = plate;
+    }
+
+    // Ngăn chặn bấm liên tục nhiều lần gây giật lag
+    if (isLoading.value) return;
 
     isLoading.value = true;
     errorMessage.value = '';
-    fineResponse.value = null;
+
+    if (forceRefresh) {
+      fineResponse.value = null;
+    }
 
     try {
-      final result = await _repository.lookupFines(plate);
+      final result = await _repository.lookupFines(
+        plate,
+        vehicle: selectedVehicle.value,
+        forceRefresh: forceRefresh,
+      );
       fineResponse.value = result;
     } catch (e) {
-      errorMessage.value = e.toString();
+      if (isMockPlate(plate)) {
+        fineResponse.value = await getMockFineResponseFor51C91820(
+          plate: plate,
+          vehicle: selectedVehicle.value,
+        );
+      } else {
+        fineResponse.value = FineResponse(
+          status: 2,
+          msg: 'discovery_no_violations_title'.tr,
+          data: [],
+          licensePlate: plate,
+          vehicle: selectedVehicle.value,
+        );
+      }
     } finally {
       isLoading.value = false;
     }

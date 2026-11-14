@@ -1,36 +1,101 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:get/get.dart' hide FormData, MultipartFile;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http_parser/http_parser.dart';
 
 import '../../config/demo_config.dart';
+import '../../services/storage_service.dart';
 import '../models/location_model.dart';
 import '../models/traffic_post_model.dart';
 import '../services/api_service.dart';
 
 class TrafficPostRepository {
   final ApiService _apiService = ApiService();
-  static final List<TrafficPostModel> _demoPosts = DemoConfig.getInitialSamplePosts();
+  static final List<TrafficPostModel> _demoPosts =
+      DemoConfig.getInitialSamplePosts();
+
+  static List<TrafficPostModel> get demoPosts => _demoPosts;
 
   static void addDemoPost(TrafficPostModel post) {
-    if (!_demoPosts.any((p) => p.id == post.id)) {
-      _demoPosts.insert(0, post);
+    _demoPosts.insert(0, post);
+  }
+
+  static final Dio _aiDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 30),
+    ),
+  );
+
+  /// Kiểm duyệt ảnh bằng AI (POST /predict)
+  /// Trả về true nếu label == 1 (ảnh giao thông hợp lệ), false nếu label == 0
+  Future<bool> verifyTrafficImage(
+    String filePath, {
+    CancelToken? cancelToken,
+  }) async {
+    if (DemoConfig.isDemoMode) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      return true;
     }
+    final rawUrl = dotenv.env['AI_PREDICT_URL']?.trim();
+    final predictUrl = (rawUrl != null && rawUrl.isNotEmpty)
+        ? rawUrl
+        : 'http://103.249.117.232:46016/predict';
+
+    final fileName = filePath.split(RegExp(r'[/\\]')).last;
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+    });
+
+    final response = await _aiDio.post(
+      predictUrl,
+      data: formData,
+      cancelToken: cancelToken,
+    );
+
+    final data = response.data is String
+        ? jsonDecode(response.data as String)
+        : response.data;
+
+    if (data is Map) {
+      final label = data['label'];
+      return label == 1 || label == '1' || label == true;
+    }
+
+    return false;
   }
 
   Future<List<TrafficPostModel>> getPosts({
-    required String location,
+    String location = '',
     int page = 0,
     int size = 10,
     String? keyword,
+    String? hashtag,
+    double? lat,
+    double? lng,
+    double? radiusKm,
+    String? sortBy,
   }) async {
     if (DemoConfig.isDemoMode) {
-      final all = <TrafficPostModel>[..._demoPosts];
+      if (page > 0) return [];
+      var all = <TrafficPostModel>[..._demoPosts];
+      if (hashtag != null && hashtag.isNotEmpty) {
+        final normalizedTag = hashtag.replaceAll('#', '').toLowerCase().trim();
+        all = all.where((p) {
+          return p.hashtags?.any(
+                (t) => t.replaceAll('#', '').toLowerCase().trim() == normalizedTag,
+              ) ??
+              false;
+        }).toList();
+      }
       if (keyword != null && keyword.isNotEmpty) {
         final kw = keyword.toLowerCase();
-        return all.where((p) {
+        all = all.where((p) {
           final contentMatch = p.content?.toLowerCase().contains(kw) ?? false;
-          final tagMatch = p.hashtags?.any((t) => t.toLowerCase().contains(kw)) ?? false;
+          final tagMatch =
+              p.hashtags?.any((t) => t.toLowerCase().contains(kw)) ?? false;
           final addrMatch =
               p.location?.address.toLowerCase().contains(kw) ?? false;
           return contentMatch || tagMatch || addrMatch;
@@ -43,6 +108,19 @@ class TrafficPostRepository {
       final queryParams = <String, dynamic>{'page': page, 'size': size};
       if (keyword != null && keyword.isNotEmpty) {
         queryParams['keyword'] = keyword;
+      }
+      if (hashtag != null && hashtag.isNotEmpty) {
+        queryParams['hashtag'] = hashtag;
+      }
+      if (lat != null && lng != null) {
+        queryParams['lat'] = lat;
+        queryParams['lng'] = lng;
+      }
+      if (radiusKm != null) {
+        queryParams['radius'] = radiusKm;
+      }
+      if (sortBy != null && sortBy.isNotEmpty) {
+        queryParams['sortBy'] = sortBy;
       }
       final response = await _apiService.dio.get(
         '/TrafficPost',
@@ -77,15 +155,16 @@ class TrafficPostRepository {
           .map(
             (json) => TrafficPostModel.fromJson(json as Map<String, dynamic>),
           )
+          .where((post) => post.isVisible)
           .toList();
     } on DioException catch (e) {
       if (e.response != null) {
         final errorMessage = e.response!.data is Map
-            ? e.response!.data['message'] ?? 'Không thể tải bài viết'
-            : 'Không thể tải bài viết';
+            ? e.response!.data['message'] ?? 'post_load_error'.tr
+            : 'post_load_error'.tr;
         throw errorMessage;
       }
-      throw 'Lỗi kết nối mạng. Vui lòng kiểm tra kết nối internet.';
+      throw 'network_error_retry'.tr;
     } catch (e) {
       throw 'Có lỗi xảy ra: ${e.toString()}';
     }
@@ -99,22 +178,34 @@ class TrafficPostRepository {
     required double lng,
     required String address,
     List<String> hashtags = const [],
-    String status = 'ACTIVE',
+    String status = 'NORMAL',
     String? filePath,
     void Function(int sent, int total)? onSendProgress,
+    CancelToken? cancelToken,
   }) async {
     if (DemoConfig.isDemoMode) {
+      final userInfo = Get.isRegistered<StorageService>()
+          ? Get.find<StorageService>().getUserInfo()
+          : null;
       final newPost = TrafficPostModel(
         id: 'post_demo_${DateTime.now().millisecondsSinceEpoch}',
-        userId: '1',
-        userName: 'Demo User (Web)',
+        userId: (userInfo?['id'] ?? 1).toString(),
+        userName: userInfo?['fullname'] as String? ?? 'Người dùng Demo',
+        avatarUrl:
+            userInfo?['avatarUrl'] as String? ?? DemoConfig.demoUserAvatar,
         content: content,
         type: type,
         hashtags: hashtags,
+        imageUrls: (filePath != null && filePath.isNotEmpty)
+            ? [filePath]
+            : ['assets/icons/traffic_ketxe.jpg'],
         location: LocationModel(lat: lat, lng: lng, address: address),
         status: status,
         likes: 0,
         isLiked: false,
+        userReputationScore: userInfo?['reputationScore'] as int? ?? 125,
+        userBadge:
+            userInfo?['badge'] as String? ?? 'Chuyên gia giao thông',
         timestamp: DateTime.now(),
       );
       _demoPosts.insert(0, newPost);
@@ -151,7 +242,7 @@ class TrafficPostRepository {
 
       // Add file if provided
       if (filePath != null && filePath.isNotEmpty) {
-        final fileName = filePath.split('/').last;
+        final fileName = filePath.split(RegExp(r'[/\\]')).last;
         formData.files.add(
           MapEntry(
             'file',
@@ -164,56 +255,80 @@ class TrafficPostRepository {
         '/TrafficPost',
         data: formData,
         onSendProgress: onSendProgress,
+        cancelToken: cancelToken,
       );
 
       if (response.data['success'] == false) {
-        throw response.data['message'] ?? 'Không thể tạo bài viết';
+        throw response.data['message'] ?? 'post_create_error'.tr;
       }
 
       final postData = response.data['data'] ?? response.data;
       return TrafficPostModel.fromJson(postData as Map<String, dynamic>);
     } on DioException catch (e) {
-      if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể tạo bài viết';
+      if (CancelToken.isCancel(e)) {
+        throw 'post_upload_cancelled'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      if (e.response?.statusCode == 403) {
+        if (e.response?.data is Map && e.response!.data['message'] != null) {
+          throw e.response!.data['message'].toString();
+        }
+        throw 'reputation_cannot_post_alert'.tr;
+      }
+      if (e.response != null && e.response!.data is Map) {
+        throw e.response!.data['message'] ?? 'post_create_error'.tr;
+      }
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
   }
 
-  /// Cập nhật bài viết
+  /// Cập nhật bài viết (giữ nguyên thời gian và các trường khác, chỉ cập nhật nội dung)
   Future<void> updatePost({
     required String postId,
-    required String userId,
     required String type,
     required String content,
     required double lat,
     required double lng,
     required String address,
+    required List<String> hashtags,
     required String status,
+    required DateTime timestamp,
   }) async {
+    if (DemoConfig.isDemoMode) {
+      final idx = _demoPosts.indexWhere((p) => p.id == postId);
+      if (idx != -1) {
+        _demoPosts[idx] = _demoPosts[idx].copyWith(
+          type: type,
+          content: content,
+          location: LocationModel(lat: lat, lng: lng, address: address),
+          hashtags: hashtags,
+          status: status,
+        );
+      }
+      return;
+    }
     try {
       final response = await _apiService.dio.put(
         '/TrafficPost/$postId',
         data: {
-          'userId': userId,
           'type': type,
           'content': content,
           'location': {'lat': lat, 'lng': lng, 'address': address},
+          'hashtags': hashtags,
           'status': status,
-          'timestamp': DateTime.now().toIso8601String(),
+          'timestamp': timestamp.toUtc().toIso8601String(),
         },
       );
 
-      if (response.data['success'] == false) {
-        throw response.data['message'] ?? 'Không thể cập nhật bài viết';
+      if (response.data is Map && response.data['success'] == false) {
+        throw response.data['message'] ?? 'post_update_error'.tr;
       }
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể cập nhật bài viết';
+        throw e.response!.data['message'] ?? 'post_update_error'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -232,9 +347,9 @@ class TrafficPostRepository {
       );
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể báo cáo bài viết';
+        throw e.response!.data['message'] ?? 'post_report_error'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -247,9 +362,9 @@ class TrafficPostRepository {
       await _apiService.dio.post('/TrafficPost/$postId/like');
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể thực hiện hành động';
+        throw e.response!.data['message'] ?? 'action_failed'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -264,14 +379,14 @@ class TrafficPostRepository {
     try {
       final response = await _apiService.dio.delete('/TrafficPost/$postId');
 
-      if (response.data['success'] == false) {
-        throw response.data['message'] ?? 'Không thể xóa bài viết';
+      if (response.data is Map && response.data['success'] == false) {
+        throw response.data['message'] ?? 'post_delete_error'.tr;
       }
     } on DioException catch (e) {
       if (e.response != null && e.response!.data is Map) {
-        throw e.response!.data['message'] ?? 'Không thể xóa bài viết';
+        throw e.response!.data['message'] ?? 'post_delete_error'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }

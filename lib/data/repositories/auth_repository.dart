@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:get/get.dart';
 
 import '../../config/demo_config.dart';
+import '../../services/notification_service.dart';
 import '../models/login_request.dart';
 import '../models/login_response.dart';
 import '../models/signup_request.dart';
@@ -24,7 +26,7 @@ class AuthRepository {
       );
 
       if (response.data['success'] == false) {
-        throw response.data['message'] ?? 'Đăng ký thất bại';
+        throw response.data['message'] ?? 'signup_failed'.tr;
       }
 
       // Save token if available
@@ -35,11 +37,11 @@ class AuthRepository {
     } on DioException catch (e) {
       if (e.response != null) {
         if (e.response!.data is Map) {
-          throw e.response!.data['message'] ?? 'Đăng ký thất bại';
+          throw e.response!.data['message'] ?? 'signup_failed'.tr;
         }
-        throw 'Đăng ký thất bại';
+        throw 'signup_failed'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -51,30 +53,33 @@ class AuthRepository {
       _apiService.setToken(demoToken);
       return LoginResponse(
         id: 1,
-        username: request.username.isNotEmpty ? request.username : 'demouser',
-        fullname: 'Nguyễn Anh Dũng',
+        username: request.username.isNotEmpty ? request.username : 'demo_user',
+        fullname: 'Người dùng Demo',
         province: 'Hà Nội',
         relativePhone: '0988888888',
         phoneNumber: '0983168888',
         token: demoToken,
+        reputationScore: 125,
+        badge: 'Chuyên gia giao thông',
+        canCreatePost: true,
       );
     }
     try {
-      String? deviceToken = kIsWeb ? null : await _getDeviceToken(); 
-      
+      final String? deviceToken = await _getDeviceToken();
+
       final Map<String, dynamic> requestData = request.toJson();
-      
-      if (deviceToken != null) {
+
+      if (deviceToken != null && deviceToken.isNotEmpty) {
         requestData['deviceToken'] = deviceToken;
       }
 
       final response = await _apiService.dio.post(
         '/auth/login',
-        data: requestData, 
+        data: requestData,
       );
 
       if (response.data['success'] == false) {
-        throw response.data['message'] ?? 'Đăng nhập thất bại';
+        throw response.data['message'] ?? 'login_failed'.tr;
       }
 
       // Parse login response
@@ -87,11 +92,11 @@ class AuthRepository {
     } on DioException catch (e) {
       if (e.response != null) {
         if (e.response!.data is Map) {
-          throw e.response!.data['message'] ?? 'Đăng nhập thất bại';
+          throw e.response!.data['message'] ?? 'login_failed'.tr;
         }
-        throw 'Đăng nhập thất bại';
+        throw 'login_failed'.tr;
       }
-      throw 'Lỗi kết nối mạng';
+      throw 'network_error'.tr;
     } catch (e) {
       throw e.toString();
     }
@@ -100,17 +105,20 @@ class AuthRepository {
   Future<String?> _getDeviceToken() async {
     if (kIsWeb) return null;
     try {
-      // Xin quyền (Quan trọng cho iOS)
-      await firebaseMessaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      
-      String? token = await firebaseMessaging.getToken();
+      // Ưu tiên lấy nhanh FCM token đã được NotificationService lấy sẵn khi khởi động
+      if (Get.isRegistered<NotificationService>()) {
+        final cachedToken = NotificationService.to.fcmToken.value;
+        if (cachedToken.isNotEmpty) {
+          return cachedToken;
+        }
+      }
+
+      final String? token = await firebaseMessaging.getToken();
+      debugPrint("🔔 FCM Device Token: $token");
       return token;
     } catch (e) {
-      return null; 
+      debugPrint("❌ Lỗi lấy Device Token: $e");
+      return null;
     }
   }
 }

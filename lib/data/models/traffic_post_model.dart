@@ -17,6 +17,8 @@ class TrafficPostModel {
   final bool? isLiked;
   final List<String>? hashtags;
   final bool? isFollowedByCurrentUser;
+  final int? userReputationScore;
+  final String? userBadge;
 
   TrafficPostModel({
     this.id,
@@ -33,6 +35,8 @@ class TrafficPostModel {
     this.isLiked,
     this.hashtags,
     this.isFollowedByCurrentUser,
+    this.userReputationScore,
+    this.userBadge,
   });
 
   factory TrafficPostModel.fromJson(Map<String, dynamic> json) {
@@ -51,7 +55,8 @@ class TrafficPostModel {
       timestamp: json['timestamp'] != null
           ? DateTime.parse(json['timestamp'] as String)
           : null,
-      userName: user?['fullname'] as String? ?? json['userName'] as String?,
+      userName: (user?['fullname'] ?? user?['fullName']) as String? ??
+          json['userName'] as String?,
       avatarUrl: user?['avatarUrl'] as String? ?? json['avatarUrl'] as String?,
       isFollowedByCurrentUser:
           json['isFollowedByCurrentUser'] as bool? ?? user?['follow'] as bool?,
@@ -66,6 +71,9 @@ class TrafficPostModel {
       hashtags: json['hashtags'] != null
           ? List<String>.from(json['hashtags'] as List)
           : null,
+      userReputationScore: user?['reputationScore'] as int? ??
+          json['userReputationScore'] as int?,
+      userBadge: user?['badge'] as String? ?? json['userBadge'] as String?,
     );
   }
 
@@ -86,6 +94,9 @@ class TrafficPostModel {
       if (hashtags != null) 'hashtags': hashtags,
       if (isFollowedByCurrentUser != null)
         'isFollowedByCurrentUser': isFollowedByCurrentUser,
+      if (userReputationScore != null)
+        'userReputationScore': userReputationScore,
+      if (userBadge != null) 'userBadge': userBadge,
     };
   }
 
@@ -93,10 +104,17 @@ class TrafficPostModel {
   String? getFullImageUrl(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) return null;
 
-    // Nếu đã là URL đầy đủ hoặc đường dẫn assets, return luôn
+    // Nếu đã là URL đầy đủ hoặc đường dẫn assets/blob, return luôn
     if (imageUrl.startsWith('http://') ||
         imageUrl.startsWith('https://') ||
-        imageUrl.startsWith('assets/')) {
+        imageUrl.startsWith('assets/') ||
+        imageUrl.startsWith('blob:') ||
+        imageUrl.startsWith('data:')) {
+      return imageUrl;
+    }
+
+    // Nếu là file path local
+    if (imageUrl.startsWith('/')) {
       return imageUrl;
     }
 
@@ -105,20 +123,22 @@ class TrafficPostModel {
     return '$baseUrl/uploads/$imageUrl';
   }
 
-  /// Get full image URLs list
+  /// List of all full image URLs
   List<String>? get fullImageUrls {
-    if (imageUrls == null || imageUrls!.isEmpty) return null;
+    if (imageUrls == null) return null;
     return imageUrls!.map((url) => getFullImageUrl(url) ?? url).toList();
   }
 
-  /// Get full avatar URL
+  /// Full avatar URL
   String? get fullAvatarUrl {
-    if (avatarUrl == null || avatarUrl?.isEmpty == true) return null;
+    if (avatarUrl == null || avatarUrl!.isEmpty) return null;
 
-    // Nếu đã là URL đầy đủ hoặc đường dẫn assets, return luôn
+    // Nếu đã là URL đầy đủ hoặc đường dẫn assets/blob, return luôn
     if (avatarUrl!.startsWith('http://') ||
         avatarUrl!.startsWith('https://') ||
-        avatarUrl!.startsWith('assets/')) {
+        avatarUrl!.startsWith('assets/') ||
+        avatarUrl!.startsWith('blob:') ||
+        avatarUrl!.startsWith('data:')) {
       return avatarUrl;
     }
 
@@ -126,6 +146,12 @@ class TrafficPostModel {
     final baseUrl = dotenv.env['BASE_URL'] ?? '';
     return '$baseUrl/uploads/$avatarUrl';
   }
+
+  /// Bài viết đã bị admin ẩn hoặc xóa (`status == 'DELETED'`)
+  bool get isDeleted => status?.trim().toUpperCase() == 'DELETED';
+
+  /// Bài viết được phép hiển thị trên ứng dụng (`status == 'NORMAL'` hoặc chưa có status nhưng không phải `DELETED`)
+  bool get isVisible => !isDeleted && (status == null || status!.trim().isEmpty || status!.trim().toUpperCase() == 'NORMAL');
 
   TrafficPostModel copyWith({
     String? id,
@@ -142,6 +168,8 @@ class TrafficPostModel {
     bool? isLiked,
     List<String>? hashtags,
     bool? isFollowedByCurrentUser,
+    int? userReputationScore,
+    String? userBadge,
   }) {
     return TrafficPostModel(
       id: id ?? this.id,
@@ -159,6 +187,8 @@ class TrafficPostModel {
       hashtags: hashtags ?? this.hashtags,
       isFollowedByCurrentUser:
           isFollowedByCurrentUser ?? this.isFollowedByCurrentUser,
+      userReputationScore: userReputationScore ?? this.userReputationScore,
+      userBadge: userBadge ?? this.userBadge,
     );
   }
 }

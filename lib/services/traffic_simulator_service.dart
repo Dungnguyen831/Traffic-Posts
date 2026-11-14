@@ -117,6 +117,8 @@ class TrafficSimulatorService extends GetxService {
         ),
         likes: 1,
         isLiked: false,
+        userReputationScore: 120,
+        userBadge: 'Người dẫn đường',
         timestamp: now,
       );
 
@@ -182,14 +184,14 @@ class TrafficSimulatorService extends GetxService {
         message,
         snackPosition: SnackPosition.TOP,
         duration: const Duration(seconds: 4),
-        backgroundColor: color.withOpacity(0.92),
+        backgroundColor: color.withValues(alpha: 0.92),
         colorText: Colors.white,
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         borderRadius: 16,
         icon: Icon(icon, color: Colors.white, size: 28),
         boxShadows: [
           BoxShadow(
-            color: color.withOpacity(0.35),
+            color: color.withValues(alpha: 0.35),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),

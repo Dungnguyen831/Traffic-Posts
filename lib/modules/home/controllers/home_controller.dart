@@ -5,19 +5,26 @@ import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart' hide ServiceStatus;
 import 'package:traffic_app/config/demo_config.dart';
+import 'package:traffic_app/modules/camera/controllers/camera_controller.dart';
 import 'package:traffic_app/modules/dashboard/controllers/dashboard_controller.dart';
 import 'package:traffic_app/modules/map/controllers/map_controller.dart';
-import 'package:traffic_app/routes/app_pages.dart';
 
 class HomeController extends GetxController with WidgetsBindingObserver {
   // Bottom Navigation State
   var currentIndex = 0.obs;
-  // final bool _mapTabVisited = false;
+  final visitedTabs = <int>{0}.obs;
+
+  // Thu nhỏ thanh điều hướng khi người dùng cuộn xuống xem nội dung
+  final isNavBarCollapsed = false.obs;
+  double _accumulatedScrollDelta = 0.0;
+  static const double _collapseScrollThreshold = 28.0;
+  static const double _expandScrollThreshold = -20.0;
 
   // Upload Progress State
   var isUploading = false.obs;
   var uploadProgress = 0.0.obs;
-  var uploadLabel = 'Đăng bài viết'.obs;
+  var uploadLabel = 'upload_post_label'.tr.obs;
+  VoidCallback? _onCancelUpload;
 
   // Location Permission / Service State
   var isLocationServiceDisabled = false.obs;
@@ -34,6 +41,18 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   @override
+  void onReady() {
+    super.onReady();
+    // Khởi tạo ngầm MapController sau khi khung hình Trang chủ đầu tiên đã render xong
+    // để duy trì kết nối STOMP WebSocket nhận bài viết mới mà không gây nghẽn lúc mở app
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (!isClosed && Get.isRegistered<MapController>()) {
+        Get.find<MapController>();
+      }
+    });
+  }
+
+  @override
   void onClose() {
     WidgetsBinding.instance.removeObserver(this);
     _serviceStatusSubscription?.cancel();
@@ -46,6 +65,11 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       // Re-check when user returns from Settings after granting permission
       checkLocationStatus();
+      if (currentIndex.value == 2 &&
+          visitedTabs.contains(2) &&
+          Get.isRegistered<CameraController>()) {
+        Get.find<CameraController>().refreshLocationAndTime();
+      }
     }
   }
 
@@ -65,6 +89,11 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         // Re-check permission when GPS is re-enabled
         locationBannerDismissed.value = false;
         checkLocationStatus();
+        if (currentIndex.value == 2 &&
+            visitedTabs.contains(2) &&
+            Get.isRegistered<CameraController>()) {
+          Get.find<CameraController>().refreshLocationAndTime();
+        }
       }
     });
   }
@@ -91,6 +120,9 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       // Auto-hide banner if permission is now granted
       if (!denied) {
         locationBannerDismissed.value = false;
+        if (visitedTabs.contains(1) && Get.isRegistered<MapController>()) {
+          Get.find<MapController>().ensureInitialUserLocation();
+        }
       }
     } catch (e) {
       debugPrint('HomeController checkLocationStatus error: $e');
@@ -113,6 +145,14 @@ class HomeController extends GetxController with WidgetsBindingObserver {
           result == LocationPermission.whileInUse) {
         isLocationPermissionDenied.value = false;
         locationBannerDismissed.value = false;
+        if (visitedTabs.contains(1) && Get.isRegistered<MapController>()) {
+          Get.find<MapController>().ensureInitialUserLocation();
+        }
+        if (currentIndex.value == 2 &&
+            visitedTabs.contains(2) &&
+            Get.isRegistered<CameraController>()) {
+          Get.find<CameraController>().refreshLocationAndTime();
+        }
       }
     } catch (e) {
       debugPrint('HomeController requestLocationPermission error: $e');
@@ -123,31 +163,99 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     locationBannerDismissed.value = true;
   }
 
+  /// Lắng nghe cuộn dọc của các tab: cuộn xuống đủ ngưỡng -> thu nhỏ thanh điều hướng,
+  /// cuộn lên đủ ngưỡng hoặc về đầu danh sách -> mở rộng lại.
+  bool handleScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+
+    if (notification is ScrollStartNotification) {
+      _accumulatedScrollDelta = 0.0;
+      return false;
+    }
+
+    if (notification is ScrollUpdateNotification) {
+      final pixels = notification.metrics.pixels;
+      final minExtent = notification.metrics.minScrollExtent;
+
+      if (pixels <= minExtent + 12) {
+        _accumulatedScrollDelta = 0.0;
+        if (isNavBarCollapsed.value) {
+          isNavBarCollapsed.value = false;
+        }
+        return false;
+      }
+
+      // Bỏ qua vùng nảy (overscroll bounce) ở cuối danh sách để tránh đảo trạng thái thanh bar
+      if (pixels >= notification.metrics.maxScrollExtent) {
+        return false;
+      }
+
+      final delta = notification.scrollDelta ?? 0.0;
+      if (delta == 0.0) return false;
+
+      if ((delta > 0 && _accumulatedScrollDelta < 0) ||
+          (delta < 0 && _accumulatedScrollDelta > 0)) {
+        _accumulatedScrollDelta = 0.0;
+      }
+
+      _accumulatedScrollDelta += delta;
+
+      if (_accumulatedScrollDelta >= _collapseScrollThreshold) {
+        if (!isNavBarCollapsed.value) {
+          isNavBarCollapsed.value = true;
+        }
+        _accumulatedScrollDelta = 0.0;
+      } else if (_accumulatedScrollDelta <= _expandScrollThreshold) {
+        if (isNavBarCollapsed.value) {
+          isNavBarCollapsed.value = false;
+        }
+        _accumulatedScrollDelta = 0.0;
+      }
+    }
+    return false;
+  }
+
   void changeTab(int index) {
+    _accumulatedScrollDelta = 0.0;
     if (index == 0 && currentIndex.value == 0) {
       if (Get.isRegistered<DashboardController>()) {
         Get.find<DashboardController>().scrollToTop();
+        if (isNavBarCollapsed.value) {
+          isNavBarCollapsed.value = false;
+        }
       }
       return;
     }
+    final wasVisited = visitedTabs.contains(index);
+    visitedTabs.add(index);
     currentIndex.value = index;
-    // if (index == 1 && !_mapTabVisited) {
-    //   _mapTabVisited = true;
-    //   Future.delayed(const Duration(milliseconds: 200), () {
-    //     if (Get.isRegistered<MapController>()) {
-    //       Get.find<MapController>().toggleMapType();
-    //     }
-    //   });
-    // }
-  }
+    if (isNavBarCollapsed.value) {
+      isNavBarCollapsed.value = false;
+    }
 
-  void goToEditProfile() {
-    Get.toNamed(Routes.PROFILE);
+    // Khi người dùng mở tab Bản đồ (index 1), đảm bảo đã định vị vị trí người dùng
+    if (index == 1 && Get.isRegistered<MapController>()) {
+      Get.find<MapController>().ensureInitialUserLocation(
+        requestPermissionIfDenied: true,
+      );
+    }
+
+    // Mỗi khi người dùng bấm chọn chức năng đăng bài (Tab Camera - index 2),
+    // bắt buộc xóa vị trí cũ và load lại vị trí GPS hiện tại mới nhất
+    if (index == 2 && wasVisited && Get.isRegistered<CameraController>()) {
+      Get.find<CameraController>().refreshLocationAndTime();
+    }
   }
 
   // Upload Progress Methods
-  void startUpload({String label = 'Đăng bài viết'}) {
-    uploadLabel.value = label;
+  void startUpload({
+    String? label,
+    VoidCallback? onCancel,
+  }) {
+    _onCancelUpload = onCancel;
+    uploadLabel.value = label ?? 'upload_post_label'.tr;
     isUploading.value = true;
     uploadProgress.value = 0.0;
   }
@@ -157,6 +265,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   void completeUpload() {
+    _onCancelUpload = null;
     uploadProgress.value = 1.0;
     // Delay để hiển thị 100% trước khi ẩn
     Future.delayed(const Duration(milliseconds: 500), () {
@@ -170,7 +279,10 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   void cancelUpload() {
+    final cancelCallback = _onCancelUpload;
+    _onCancelUpload = null;
     isUploading.value = false;
     uploadProgress.value = 0.0;
+    cancelCallback?.call();
   }
 }

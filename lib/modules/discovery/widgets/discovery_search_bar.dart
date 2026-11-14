@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:iconly/iconly.dart';
 
+import '../../../../routes/app_pages.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../widgets/custom_text_field.dart';
 import '../../../../widgets/primary_button.dart';
@@ -73,9 +75,63 @@ class DiscoverySearchBar extends StatelessWidget {
                   ],
                 ),
               ),
+              SizedBox(width: 8.w),
+              InkWell(
+                onTap: () => Get.toNamed(Routes.VIOLATION_SUBSCRIPTION),
+                borderRadius: BorderRadius.circular(12.r),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(
+                      color: AppTheme.primaryColor.withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        IconlyBroken.notification,
+                        size: 15.sp,
+                        color: AppTheme.primaryColor,
+                      ),
+                      SizedBox(width: 5.w),
+                      Text(
+                        'violation_sub_nav_btn'.tr,
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
           SizedBox(height: 14.h),
+          Obx(
+            () => Row(
+              children: [
+                _VehicleChip(
+                  label: 'discovery_vehicle_car'.tr,
+                  icon: Icons.directions_car_rounded,
+                  isSelected: controller.selectedVehicle.value == '1',
+                  onTap: () => controller.setVehicle('1'),
+                ),
+                SizedBox(width: 8.w),
+                _VehicleChip(
+                  label: 'discovery_vehicle_motorcycle'.tr,
+                  icon: Icons.two_wheeler_rounded,
+                  isSelected: controller.selectedVehicle.value == '2',
+                  onTap: () => controller.setVehicle('2'),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 12.h),
           Row(
             children: [
               Expanded(
@@ -84,6 +140,10 @@ class DiscoverySearchBar extends StatelessWidget {
                   prefixIcon: IconlyBroken.search,
                   controller: controller.searchController,
                   textInputAction: TextInputAction.search,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                  ],
                   onSubmitted: (_) => controller.searchFines(),
                   height: 50.h,
                 ),
@@ -101,6 +161,57 @@ class DiscoverySearchBar extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VehicleChip extends StatelessWidget {
+  const _VehicleChip({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 7.h),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryColor : AppTheme.backgroundColor,
+          borderRadius: BorderRadius.circular(20.r),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : AppTheme.dividerColor,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16.r,
+              color: isSelected ? Colors.white : AppTheme.subTextColor,
+            ),
+            SizedBox(width: 6.w),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.sp,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? Colors.white : AppTheme.textColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

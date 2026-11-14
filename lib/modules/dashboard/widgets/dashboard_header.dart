@@ -5,10 +5,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconly/iconly.dart';
-import 'package:traffic_app/theme/app_theme.dart';
-import 'package:traffic_app/widgets/loading_widget.dart';
 
+import 'package:flutter/services.dart';
 import '../../../routes/app_pages.dart';
+import '../../../theme/app_theme.dart';
+import '../controllers/dashboard_controller.dart';
+import '../../emergency/controllers/emergency_controller.dart';
+import '../../home/controllers/home_controller.dart';
 import '../../profile/controllers/profile_controller.dart';
 import '../../profile/views/user_profile_screen.dart';
 
@@ -22,46 +25,88 @@ class DashboardHeader extends StatelessWidget {
 
     return Row(
       children: [
-        // App Logo & Tên ứng dụng Flowly với font Quicksand chuẩn của app
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36.w,
-              height: 36.w,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.18),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+        // Tên ứng dụng Traffic Posts phía trên cùng bên trái (Bấm để tải lại danh sách bài viết)
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            if (Get.isRegistered<DashboardController>()) {
+              final dashController = Get.find<DashboardController>();
+              if (dashController.isLoading.value) return;
+              dashController.scrollToTop();
+              if (dashController.posts.isEmpty) {
+                dashController.refresh();
+              } else {
+                try {
+                  dashController.refreshController.requestRefresh();
+                } catch (_) {
+                  dashController.refresh();
+                }
+              }
+            }
+          },
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 6.h),
+            child: RichText(
+              text: TextSpan(
+                style: GoogleFonts.quicksand(
+                  fontSize: 20.sp,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                ),
+                children: const [
+                  TextSpan(
+                    text: 'Traffic ',
+                    style: TextStyle(color: AppTheme.textColor),
+                  ),
+                  TextSpan(
+                    text: 'Posts',
+                    style: TextStyle(color: AppTheme.primaryColor),
                   ),
                 ],
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Image.asset(
-                'assets/icons/app_icon_big.png',
-                fit: BoxFit.cover,
-              ),
             ),
-            SizedBox(width: 10.w),
-            Text(
-              'Traffic Posts',
-              style: GoogleFonts.quicksand(
-                fontSize: 22.sp,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF1E293B),
-                letterSpacing: -0.5,
-              ),
-            ),
-          ],
+          ),
         ),
         const Spacer(),
+        // Nút Bảng xếp hạng uy tín
+        GestureDetector(
+          onTap: () => Get.toNamed(Routes.RANKING),
+          child: Container(
+            width: 38.w,
+            height: 38.w,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.emoji_events_rounded,
+              size: 20.sp,
+              color: const Color(0xFFE5A100),
+            ),
+          ),
+        ),
+        SizedBox(width: 14.w),
+        // Map marker
         // Nút Cứu hộ khẩn cấp
         GestureDetector(
           onTap: () {
-            Get.toNamed(Routes.EMERGENCY);
+            if (Get.isRegistered<EmergencyController>() &&
+                Get.find<EmergencyController>().isSosActive.value) {
+              Get.find<EmergencyController>().isSheetMinimized.value = false;
+              if (Get.isRegistered<HomeController>()) {
+                Get.find<HomeController>().changeTab(1);
+              }
+            } else {
+              Get.toNamed(Routes.EMERGENCY);
+            }
           },
           child: SvgPicture.asset(
             'assets/icons/warning_appbar.svg',
@@ -78,7 +123,6 @@ class DashboardHeader extends StatelessWidget {
               arguments: {
                 'heroTag': 'user_avatar',
                 'initialAvatarUrl': profileController.currentAvatarUrl.value,
-                'initialAvatar': profileController.currentAvatarUrl.value,
               },
             );
           },
@@ -89,71 +133,69 @@ class DashboardHeader extends StatelessWidget {
               final isLoading = profileController.isLoading.value;
 
               return Container(
-                width: 38.w,
-                height: 38.w,
+                width: 36.w,
+                height: 36.w,
                 decoration: BoxDecoration(
+                  color: AppTheme.primaryBgColor,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: AppTheme.primaryColor.withOpacity(0.3),
-                    width: 1.5,
+                    color: AppTheme.primaryColor.withValues(alpha: 0.18),
+                    width: 1,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: isLoading
-                    ? Center(child: LoadingWidget(width: 18.w))
-                    : (avatarUrl.isEmpty
-                          ? Container(
-                              color: AppTheme.primaryColor.withOpacity(0.1),
-                              child: Icon(
+                child: ClipOval(
+                  child: (isLoading && avatarUrl.isEmpty)
+                      ? Center(
+                          child: SizedBox(
+                            width: 16.w,
+                            height: 16.w,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                        )
+                      : (avatarUrl.isEmpty
+                            ? Icon(
                                 IconlyBroken.profile,
                                 size: 20.sp,
                                 color: AppTheme.primaryColor,
-                              ),
-                            )
-                          : (avatarUrl.startsWith('assets/')
-                                ? Image.asset(
-                                    avatarUrl,
-                                    fit: BoxFit.cover,
-                                    width: 38.w,
-                                    height: 38.w,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            Container(
-                                              color: AppTheme.primaryColor
-                                                  .withOpacity(0.1),
-                                              child: Icon(
-                                                IconlyBroken.profile,
-                                                size: 20.sp,
+                              )
+                            : (avatarUrl.startsWith('assets/')
+                                  ? Image.asset(
+                                      avatarUrl,
+                                      fit: BoxFit.cover,
+                                      width: 36.w,
+                                      height: 36.w,
+                                    )
+                                  : CachedNetworkImage(
+                                      imageUrl: avatarUrl,
+                                      fit: BoxFit.cover,
+                                      width: 36.w,
+                                      height: 36.w,
+                                      memCacheWidth: 120,
+                                      memCacheHeight: 120,
+                                      fadeInDuration: Duration.zero,
+                                      fadeOutDuration: Duration.zero,
+                                      placeholder: (context, url) => Center(
+                                        child: SizedBox(
+                                          width: 16.w,
+                                          height: 16.w,
+                                          child:
+                                              const CircularProgressIndicator(
+                                                strokeWidth: 2,
                                                 color: AppTheme.primaryColor,
                                               ),
-                                            ),
-                                  )
-                                : CachedNetworkImage(
-                                    imageUrl: avatarUrl,
-                                    fit: BoxFit.cover,
-                                    width: 38.w,
-                                    height: 38.w,
-                                    placeholder: (context, url) => Center(
-                                      child: LoadingWidget(width: 18.w),
-                                    ),
-                                    errorWidget: (context, url, error) =>
-                                        Container(
-                                          color: AppTheme.primaryColor
-                                              .withOpacity(0.1),
-                                          child: Icon(
+                                        ),
+                                      ),
+                                      errorWidget: (context, url, error) =>
+                                          Icon(
                                             IconlyBroken.profile,
                                             size: 20.sp,
                                             color: AppTheme.primaryColor,
                                           ),
-                                        ),
-                                  ))),
+                                    ))),
+                ),
               );
             }),
           ),

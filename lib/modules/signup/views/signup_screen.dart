@@ -13,6 +13,9 @@ import '../../../widgets/custom_dropdown.dart';
 class SignupScreen extends GetView<SignupController> {
   const SignupScreen({super.key});
 
+  // Tạm thời ẩn mục đăng ký từ bên thứ 3 (Google, Facebook, Apple)
+  static const bool _showThirdPartySignup = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -167,62 +170,65 @@ class SignupScreen extends GetView<SignupController> {
                       onPressed: controller.signup,
                     ),
                   ),
-                  SizedBox(height: 20.h),
+                  SizedBox(height: _showThirdPartySignup ? 20.h : 24.h),
 
-                  // Divider
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Divider(
-                          color: AppTheme.dividerColor,
-                          thickness: 1,
-                        ),
-                      ),
-                      Padding(
-                        padding: .symmetric(horizontal: 16.w),
-                        child: Text(
-                          'or_signup_with'.tr,
-                          style: TextStyle(
-                            fontSize: 18.sp,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF616161),
+                  // Tạm thời ẩn mục đăng ký từ bên thứ 3 (Facebook, Google, Apple)
+                  if (_showThirdPartySignup) ...[
+                    // Divider
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Divider(
+                            color: AppTheme.dividerColor,
+                            thickness: 1,
                           ),
                         ),
-                      ),
-                      const Expanded(
-                        child: Divider(
-                          color: AppTheme.dividerColor,
-                          thickness: 1,
+                        Padding(
+                          padding: .symmetric(horizontal: 16.w),
+                          child: Text(
+                            'or_signup_with'.tr,
+                            style: TextStyle(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF616161),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 30.h),
+                        const Expanded(
+                          child: Divider(
+                            color: AppTheme.dividerColor,
+                            thickness: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 30.h),
 
-                  // Social Buttons
-                  Row(
-                    mainAxisAlignment: .center,
-                    children: [
-                      SocialButton(
-                        icon: FontAwesomeIcons.facebookF,
-                        color: const Color(0xFF1877F2),
-                        onPressed: () {},
-                      ),
-                      SizedBox(width: 20.w),
-                      SocialButton(
-                        iconAssetPath: 'assets/icons/google.svg',
-                        color: Colors.white,
-                        onPressed: () {},
-                      ),
-                      SizedBox(width: 20.w),
-                      SocialButton(
-                        icon: FontAwesomeIcons.apple,
-                        color: Colors.black,
-                        onPressed: () {},
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 40.h),
+                    // Social Buttons
+                    Row(
+                      mainAxisAlignment: .center,
+                      children: [
+                        SocialButton(
+                          icon: FontAwesomeIcons.facebookF,
+                          color: const Color(0xFF1877F2),
+                          onPressed: () {},
+                        ),
+                        SizedBox(width: 20.w),
+                        SocialButton(
+                          iconAssetPath: 'assets/icons/google.svg',
+                          color: Colors.white,
+                          onPressed: () {},
+                        ),
+                        SizedBox(width: 20.w),
+                        SocialButton(
+                          icon: FontAwesomeIcons.apple,
+                          color: Colors.black,
+                          onPressed: () {},
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 40.h),
+                  ],
 
                   // Login Link
                   Row(

@@ -1,6 +1,6 @@
 {
-    "name": "traffic_app",
-    "short_name": "traffic_app",
+    "name": "Traffic App",
+    "short_name": "Traffic App",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -1,15 +1,25 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/models/sos_model.dart'; 
 import '../../../theme/app_theme.dart'; 
 import '../../../widgets/app_button.dart'; 
 import '../../../widgets/custom_alert.dart'; 
+import '../controllers/map_controller.dart';
 
 class SosBottomSheet {
   static void show({required SosResponseDTO sos}) {
+    if (sos.latitude != null && sos.longitude != null) {
+      if (Get.isRegistered<MapController>()) {
+        Get.find<MapController>().focusOnSos(
+          LatLng(sos.latitude!, sos.longitude!),
+        );
+      }
+    }
     // Xử lý thời gian (Lấy giờ và phút từ timestamp)
     String timeString = '';
     if (sos.timestamp != null) {
@@ -18,16 +28,34 @@ class SosBottomSheet {
     }
 
     Get.bottomSheet(
-      Container(
-        padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
-        decoration: BoxDecoration(
-          color: AppTheme.backgroundColor, 
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(24.r),
-            topRight: Radius.circular(24.r),
-          ),
+      ClipRRect(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(28.r),
+          topRight: Radius.circular(28.r),
         ),
-        child: SafeArea(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+            decoration: BoxDecoration(
+              color: const Color(0xFFECECEC).withOpacity(0.88),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(28.r),
+                topRight: Radius.circular(28.r),
+              ),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.7),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 28,
+                  offset: const Offset(0, -8),
+                ),
+              ],
+            ),
+            child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -60,7 +88,7 @@ class SosBottomSheet {
                   SizedBox(width: 12.w),
                   Expanded(
                     child: Text(
-                      'Tín hiệu SOS',
+                      'sos_sheet_title'.tr,
                       style: TextStyle(
                         fontSize: 18.sp,
                         fontWeight: FontWeight.bold,
@@ -81,7 +109,7 @@ class SosBottomSheet {
               Text(
                 (sos.note != null && sos.note!.isNotEmpty)
                     ? sos.note!
-                    : 'Cần hỗ trợ khẩn cấp!',
+                    : 'sos_need_support_urgent'.tr,
                 style: TextStyle(
                   fontSize: 16.sp,
                   fontWeight: FontWeight.w500,
@@ -98,7 +126,7 @@ class SosBottomSheet {
                   Text(
                     (sos.phoneNumber != null && sos.phoneNumber!.isNotEmpty)
                         ? sos.phoneNumber!
-                        : 'Không có số điện thoại',
+                        : 'sos_no_phone_number'.tr,
                     style: TextStyle(
                       fontSize: 15.sp,
                       color: AppTheme.textColor, 
@@ -114,7 +142,7 @@ class SosBottomSheet {
                   // Nút Đóng (Dùng AppButton type secondary)
                   Expanded(
                     child: AppButton(
-                      text: 'Đóng',
+                      text: 'close'.tr,
                       type: ButtonType.secondary, 
                       onPressed: () => Get.back(),
                     ),
@@ -125,7 +153,7 @@ class SosBottomSheet {
                   Expanded(
                     flex: 2,
                     child: AppButton(
-                      text: 'Gọi hỗ trợ',
+                      text: 'sos_call_support'.tr,
                       icon: Icons.call, 
                       type: ButtonType.primary, 
                       onPressed: () async {
@@ -137,10 +165,10 @@ class SosBottomSheet {
                           if (await canLaunchUrl(launchUri)) {
                             await launchUrl(launchUri, mode: LaunchMode.externalApplication);
                           } else {
-                            CustomAlert.showError('Không thể mở trình gọi điện trên thiết bị này'); 
+                            CustomAlert.showError('sos_cannot_open_dialer'.tr); 
                           }
                         } else {
-                          CustomAlert.showWarning('Người này không cung cấp số điện thoại!'); 
+                          CustomAlert.showWarning('sos_no_phone_warning'.tr); 
                         }
                       },
                     ),
@@ -152,8 +180,10 @@ class SosBottomSheet {
           ),
         ),
       ),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent, 
-    );
+    ),
+  ),
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent, 
+);
   }
 }

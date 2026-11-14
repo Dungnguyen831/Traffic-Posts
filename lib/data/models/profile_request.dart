@@ -1,13 +1,18 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 class ProfileRequest {
   int? id;
   String? username;
   String? fullname;
   String? email;
   String? province;
-  String? phoneNumber; 
+  String? phoneNumber;
   String? avatarUrl;
   String? relativePhone;
   int? roleId;
+  int? reputationScore;
+  String? badge;
+  bool? canCreatePost;
 
   ProfileRequest({
     this.id,
@@ -19,20 +24,78 @@ class ProfileRequest {
     this.avatarUrl,
     this.relativePhone,
     this.roleId,
+    this.reputationScore,
+    this.badge,
+    this.canCreatePost,
   });
 
   factory ProfileRequest.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic> rawData = (json['data'] is Map<String, dynamic>)
+        ? json['data'] as Map<String, dynamic>
+        : (json['data'] is Map
+              ? Map<String, dynamic>.from(json['data'] as Map)
+              : json);
+    final Map<String, dynamic> data = (rawData['userInfo'] is Map)
+        ? Map<String, dynamic>.from(rawData['userInfo'] as Map)
+        : rawData;
+
+    final scoreRaw = data['reputationScore'];
+    final score = scoreRaw is num
+        ? scoreRaw.toInt()
+        : (scoreRaw is String ? int.tryParse(scoreRaw) ?? 100 : 100);
+
+    final rawAvatar =
+        data['avatarUrl'] ??
+        data['avatar'] ??
+        data['avatar_url'] ??
+        rawData['avatarUrl'] ??
+        rawData['avatar'];
+
     return ProfileRequest(
-      id: json['id'],
-      username: json['username'],
-      fullname: json['fullname'], 
-      email: json['email'],
-      province: json['province'],
-      phoneNumber: json['phoneNumber'], 
-      avatarUrl: json['avatarUrl'],
-      relativePhone: json['relativePhone'],
-      roleId: json['roleId'],
+      id: data['id'] is num
+          ? (data['id'] as num).toInt()
+          : (data['id'] is String ? int.tryParse(data['id'] as String) : null),
+      username: data['username'] as String?,
+      fullname: (data['fullname'] ?? data['fullName']) as String?,
+      email: data['email'] as String?,
+      province: data['province'] as String?,
+      phoneNumber: (data['phoneNumber'] ?? data['phone']) as String?,
+      avatarUrl: rawAvatar?.toString(),
+      relativePhone: data['relativePhone'] as String?,
+      roleId: data['roleId'] is num ? (data['roleId'] as num).toInt() : null,
+      reputationScore: score,
+      badge: data['badge'] as String? ?? 'Người dẫn đường',
+      canCreatePost: data['canCreatePost'] as bool? ?? (score >= 80),
     );
+  }
+
+  /// Hàm hỗ trợ lấy link ảnh avatar đầy đủ (Đồng bộ với TrafficPostModel & UserInfoModel)
+  String? get fullAvatarUrl {
+    if (avatarUrl == null || avatarUrl!.trim().isEmpty) return null;
+    final raw = avatarUrl!.trim();
+
+    if (raw.startsWith('http://') ||
+        raw.startsWith('https://') ||
+        raw.startsWith('assets/') ||
+        raw.startsWith('blob:') ||
+        raw.startsWith('data:')) {
+      return raw;
+    }
+
+    final baseUrl = (dotenv.env['BASE_URL'] ?? '').replaceAll(
+      RegExp(r'/+$'),
+      '',
+    );
+    if (raw.startsWith('/uploads/')) {
+      return '$baseUrl$raw';
+    }
+    if (raw.startsWith('uploads/')) {
+      return '$baseUrl/$raw';
+    }
+    if (raw.startsWith('/')) {
+      return '$baseUrl/uploads$raw';
+    }
+    return '$baseUrl/uploads/$raw';
   }
 
   Map<String, dynamic> toJson() {
@@ -42,12 +105,12 @@ class ProfileRequest {
       'province': province,
     };
 
-    // 2. Kiểm tra an toàn: Chỉ đóng gói SĐT nếu nó không rỗng
+    // Kiểm tra an toàn: Chỉ đóng gói SĐT nếu nó không rỗng
     if (phoneNumber != null && phoneNumber!.trim().isNotEmpty) {
       data['phoneNumber'] = phoneNumber;
     }
 
-    // 3. Tương tự với SĐT người thân
+    // Tương tự với SĐT người thân
     if (relativePhone != null && relativePhone!.trim().isNotEmpty) {
       data['relativePhone'] = relativePhone;
     }

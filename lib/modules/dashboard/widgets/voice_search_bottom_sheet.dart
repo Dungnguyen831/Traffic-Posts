@@ -142,7 +142,7 @@ class VoiceSearchBottomSheet extends GetView<DashboardController> {
             text: "close_button".tr,
             onPressed: () {
               if (controller.isListening.value) {
-                controller.stopVoiceSearch();
+                controller.stopVoiceSearch(closeSheet: false);
               }
               Get.back();
             },
