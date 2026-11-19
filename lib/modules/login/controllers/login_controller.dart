@@ -7,6 +7,8 @@ import '../../../routes/app_pages.dart';
 import '../../../services/storage_service.dart';
 import '../../../widgets/custom_dialog.dart';
 import '../../emergency/controllers/emergency_controller.dart';
+import '../../profile/controllers/profile_controller.dart';
+import '../../profile/controllers/user_profile_controller.dart';
 
 class LoginController extends GetxController {
   var rememberMe = false.obs;
@@ -70,6 +72,16 @@ class LoginController extends GetxController {
           password: passwordController.text,
         ),
       );
+
+      // Xóa toàn bộ thông tin & cache profile của tài khoản trước đó để tránh rò rỉ avatar/userId
+      await _storageService.clearUserInfo();
+      UserProfileController.clearCache();
+      if (Get.isRegistered<ProfileController>()) {
+        await Get.delete<ProfileController>(force: true);
+      }
+      if (Get.isRegistered<UserProfileController>(tag: 'my_profile')) {
+        await Get.delete<UserProfileController>(tag: 'my_profile', force: true);
+      }
 
       // Save user information
       await _storageService.saveUserInfo(

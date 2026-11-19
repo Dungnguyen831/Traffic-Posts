@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -109,11 +110,21 @@ class ProfileController extends GetxController {
       canCreatePost.value = canPost;
 
       String? resolvedAvatarUrl = user.fullAvatarUrl;
-      final uid = user.id ?? StorageService.to.getUserId();
+      final storedUid = StorageService.to.getUserId();
+      final bool isDifferentUser =
+          user.id != null && storedUid != null && storedUid != user.id;
+      if (isDifferentUser) {
+        currentAvatarUrl.value = '';
+        await StorageService.to.clearAvatarUrl();
+        UserProfileController.clearCache();
+      }
+
+      final uid = user.id ?? storedUid;
+      bool avatarResolvedAuthoritatively =
+          resolvedAvatarUrl != null && resolvedAvatarUrl.isNotEmpty;
 
       // Fallback: Nếu API /users/profile không trả về avatarUrl, lấy từ /users/{id}/profile
-      if ((resolvedAvatarUrl == null || resolvedAvatarUrl.isEmpty) &&
-          uid != null) {
+      if (!avatarResolvedAuthoritatively && uid != null) {
         try {
           final profileDetail = await _userRepository.getUserProfile(
             uid.toString(),
@@ -122,9 +133,12 @@ class ProfileController extends GetxController {
           );
           final userInfo = profileDetail['userInfo'] as UserInfoModel?;
           resolvedAvatarUrl = userInfo?.fullAvatarUrl;
+          avatarResolvedAuthoritatively = true;
         } catch (e) {
           debugPrint('Fallback avatar load error: $e');
         }
+      } else if (uid == null) {
+        avatarResolvedAuthoritatively = true;
       }
 
       if (resolvedAvatarUrl != null && resolvedAvatarUrl.isNotEmpty) {
@@ -135,9 +149,14 @@ class ProfileController extends GetxController {
           await CachedNetworkImage.evictFromCache(resolvedAvatarUrl);
         }
         currentAvatarUrl.value = resolvedAvatarUrl;
+      } else if (avatarResolvedAuthoritatively || isDifferentUser) {
+        if (currentAvatarUrl.value.isNotEmpty) {
+          await CachedNetworkImage.evictFromCache(currentAvatarUrl.value);
+        }
+        currentAvatarUrl.value = '';
       }
 
-      StorageService.to.saveUserInfo(
+      await StorageService.to.saveUserInfo(
         userId: user.id,
         username: user.username,
         fullname: user.fullname,
@@ -145,10 +164,21 @@ class ProfileController extends GetxController {
         relativePhone: user.relativePhone,
         phoneNumber: user.phoneNumber,
         avatarUrl: resolvedAvatarUrl,
+        clearAvatarIfEmpty: avatarResolvedAuthoritatively || isDifferentUser,
         reputationScore: score,
         badge: badgeName,
         canCreatePost: canPost,
       );
+
+      // Đồng bộ lại phiên SOS nếu trước đó EmergencyController chưa có userId lúc khởi tạo
+      if (user.id != null && Get.isRegistered<EmergencyController>()) {
+        final emergencyCtrl = Get.find<EmergencyController>();
+        if (!emergencyCtrl.isSosActive.value) {
+          unawaited(
+            emergencyCtrl.checkAndRestoreActiveSos(targetUserId: user.id),
+          );
+        }
+      }
 
       // Set selected province
       if (user.province != null && user.province!.isNotEmpty) {
@@ -314,6 +344,9 @@ class ProfileController extends GetxController {
 
         if (Get.isRegistered<LoginController>()) {
           Get.delete<LoginController>(force: true);
+        }
+        if (Get.isRegistered<UserProfileController>(tag: 'my_profile')) {
+          Get.delete<UserProfileController>(tag: 'my_profile', force: true);
         }
         if (Get.isRegistered<ProfileController>()) {
           Get.delete<ProfileController>(force: true);

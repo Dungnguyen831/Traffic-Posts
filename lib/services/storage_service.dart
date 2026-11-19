@@ -128,6 +128,7 @@ class StorageService extends GetxService {
     String? relativePhone,
     String? phoneNumber,
     String? avatarUrl,
+    bool clearAvatarIfEmpty = false,
     int? reputationScore,
     String? badge,
     bool? canCreatePost,
@@ -147,6 +148,8 @@ class StorageService extends GetxService {
     }
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       await _prefs.setString('user_avatarUrl', avatarUrl);
+    } else if (clearAvatarIfEmpty) {
+      await _prefs.remove('user_avatarUrl');
     }
     if (reputationScore != null) {
       await _prefs.setInt('user_reputationScore', reputationScore);
@@ -157,6 +160,10 @@ class StorageService extends GetxService {
     if (canCreatePost != null) {
       await _prefs.setBool('user_canCreatePost', canCreatePost);
     }
+  }
+
+  Future<void> clearAvatarUrl() async {
+    await _prefs.remove('user_avatarUrl');
   }
 
   Future<void> saveUserReputation({

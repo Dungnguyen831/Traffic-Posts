@@ -58,6 +58,20 @@ void main() async {
           )
           .timeout(const Duration(seconds: 8));
 
+      // Nếu tài khoản vừa auto-login khác với tài khoản lưu cục bộ trước đó, xóa sạch cache cũ
+      final prevUserId = storageService.getUserId();
+      final prevUsername = storageService.getUsername();
+      final isDifferentAccount =
+          (prevUserId != null &&
+              loginResponse.id != null &&
+              prevUserId != loginResponse.id) ||
+          (prevUsername != null &&
+              loginResponse.username != null &&
+              prevUsername != loginResponse.username);
+      if (isDifferentAccount) {
+        await storageService.clearUserInfo();
+      }
+
       // Save user information
       await storageService.saveUserInfo(
         userId: loginResponse.id,
@@ -74,15 +88,20 @@ void main() async {
       initialRoute = Routes.HOME;
     } catch (e) {
       debugPrint("Auto login failed: $e");
-      // Nếu đã có token và thông tin user hợp lệ từ phiên trước mà chỉ lỗi mạng tạm thời,
-      // không xóa mất credentials trừ khi xác thực thất bại
+      // Nếu xác thực thất bại, xóa toàn bộ phiên cũ để tránh dính dữ liệu tài khoản trước
       final errStr = e.toString();
       if (errStr.contains('Đăng nhập thất bại') ||
           errStr.contains('401') ||
           errStr.contains('400')) {
         await storageService.clearCredentials();
+        await storageService.removeToken();
+        await storageService.clearUserInfo();
       }
     }
+  } else {
+    // Không bật ghi nhớ đăng nhập -> dọn sạch token & thông tin user phiên trước khi vào màn Login
+    await storageService.removeToken();
+    await storageService.clearUserInfo();
   }
 
   runApp(MyApp(initialRoute: initialRoute));

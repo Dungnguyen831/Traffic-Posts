@@ -106,6 +106,9 @@ class ApiService {
             if (Get.isRegistered<LoginController>()) {
               Get.delete<LoginController>(force: true);
             }
+            if (Get.isRegistered<UserProfileController>(tag: 'my_profile')) {
+              Get.delete<UserProfileController>(tag: 'my_profile', force: true);
+            }
             if (Get.isRegistered<ProfileController>()) {
               Get.delete<ProfileController>(force: true);
             }

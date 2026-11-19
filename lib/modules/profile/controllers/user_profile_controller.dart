@@ -96,7 +96,7 @@ class UserProfileController extends GetxController {
   int currentPage = 0;
   final int pageSize = 10;
 
-  late final String targetUserId;
+  String targetUserId = '';
   late final bool isMyProfile;
 
   int? get currentUserId => _storageService.getUserId();
@@ -105,8 +105,14 @@ class UserProfileController extends GetxController {
   void onInit() {
     super.onInit();
     final myId = currentUserId?.toString() ?? '';
-    targetUserId = Get.arguments?['userId']?.toString() ?? myId;
-    isMyProfile = (targetUserId == myId);
+    final argUserId = Get.arguments?['userId']?.toString();
+    if (argUserId != null && argUserId.isNotEmpty) {
+      targetUserId = argUserId;
+      isMyProfile = myId.isNotEmpty && argUserId == myId;
+    } else {
+      targetUserId = myId;
+      isMyProfile = true;
+    }
 
     _checkCacheAndLoad();
   }
@@ -129,7 +135,7 @@ class UserProfileController extends GetxController {
   }
 
   void _checkCacheAndLoad() {
-    if (_profileCache.containsKey(targetUserId)) {
+    if (targetUserId.isNotEmpty && _profileCache.containsKey(targetUserId)) {
       final cachedData = _profileCache[targetUserId]!;
       userInfo.value = cachedData['userInfo'];
       final cachedPosts = (cachedData['posts'] as List<TrafficPostModel>)
@@ -202,6 +208,23 @@ class UserProfileController extends GetxController {
     }
 
     try {
+      // Nếu mở trang cá nhân của chính mình trước khi storage có userId, tự lấy từ /users/profile
+      if (targetUserId.isEmpty && isMyProfile) {
+        final myProfile = await _userRepo.getProfile();
+        if (myProfile.id != null) {
+          targetUserId = myProfile.id.toString();
+          await _storageService.saveUserInfo(
+            userId: myProfile.id,
+            username: myProfile.username,
+            fullname: myProfile.fullname,
+            province: myProfile.province,
+          );
+        }
+      }
+      if (targetUserId.isEmpty) {
+        throw 'profile_load_error'.tr;
+      }
+
       // Gọi API lấy UserInfo & Posts (có phân trang)
       final result = await _userRepo.getUserProfile(
         targetUserId,
@@ -223,17 +246,19 @@ class UserProfileController extends GetxController {
       // Đồng bộ điểm uy tín, huy hiệu và avatar vào ProfileController và StorageService nếu là profile của chính mình
       if (isMyProfile) {
         final fullAvatar = newUserInfo.fullAvatarUrl;
-        StorageService.to.saveUserInfo(
-          avatarUrl: fullAvatar,
+        final normalizedAvatar =
+            (fullAvatar != null && fullAvatar.isNotEmpty) ? fullAvatar : '';
+        await StorageService.to.saveUserInfo(
+          userId: newUserInfo.id,
+          avatarUrl: normalizedAvatar.isNotEmpty ? normalizedAvatar : null,
+          clearAvatarIfEmpty: true,
           reputationScore: newUserInfo.reputationScore,
           badge: newUserInfo.badge,
           canCreatePost: newUserInfo.canCreatePost,
         );
         if (Get.isRegistered<ProfileController>()) {
           final pc = Get.find<ProfileController>();
-          if (fullAvatar != null && fullAvatar.isNotEmpty) {
-            pc.currentAvatarUrl.value = fullAvatar;
-          }
+          pc.currentAvatarUrl.value = normalizedAvatar;
           if (newUserInfo.reputationScore != null) {
             pc.reputationScore.value = newUserInfo.reputationScore!;
           }
@@ -250,6 +275,10 @@ class UserProfileController extends GetxController {
         hasMore.value = false;
         if (refresh) {
           posts.clear();
+          _profileCache[targetUserId] = {
+            'userInfo': newUserInfo,
+            'posts': <TrafficPostModel>[],
+          };
           refreshController.refreshCompleted();
         } else {
           refreshController.loadNoData();
@@ -307,7 +336,11 @@ class UserProfileController extends GetxController {
   }
 
   void _calculateTotalLikes() {
-    totalLikes.value = _likeCounts.values.fold(0, (sum, rx) => sum + rx.value);
+    totalLikes.value = posts.fold(0, (sum, post) {
+      final postId = post.id ?? '';
+      if (postId.isEmpty) return sum;
+      return sum + (_likeCounts[postId]?.value ?? post.likes ?? 0);
+    });
   }
 
   Future<void> toggleUserFollow() async {

@@ -25,9 +25,11 @@ class AuthRepository {
       }
 
       // Save token if available
-      if (response.data['data'] != null) {
+      if (response.data['data'] is String) {
         final token = response.data['data'] as String;
-        _apiService.setToken(token);
+        if (token.isNotEmpty) {
+          _apiService.setToken(token);
+        }
       }
     } on DioException catch (e) {
       if (e.response != null) {
