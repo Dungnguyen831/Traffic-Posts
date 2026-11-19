@@ -10,6 +10,10 @@ import 'package:traffic_app/data/repositories/sos_repository.dart';
 
 import '../../services/storage_service.dart';
 import '../../modules/emergency/controllers/emergency_controller.dart';
+import '../../modules/login/controllers/login_controller.dart';
+import '../../modules/map/controllers/map_controller.dart';
+import '../../modules/profile/controllers/profile_controller.dart';
+import '../../modules/profile/controllers/user_profile_controller.dart';
 import '../models/sos_model.dart';
 
 /// Trạng thái kết nối SSE
@@ -49,7 +53,7 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
   Timer? _reconnectTimer;
   Timer? _watchdogTimer;
   Timer? _networkPollingTimer;
-  static const Duration _watchdogTimeout = Duration(seconds: 15);
+  static const Duration _watchdogTimeout = Duration(seconds: 90);
   static const Duration _networkPollingInterval = Duration(seconds: 4);
 
   // ─── Getter shortcut ──────────────────────────────────────────────────────
@@ -213,6 +217,8 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
       _networkPollingTimer?.cancel(); // dừng polling khi đã connected
       _networkPollingTimer = null;
       _resetWatchdog();
+      // Đồng bộ lại danh sách SOS đang hoạt động sau mỗi lần reconnect thành công
+      _fetchExistingSos();
 
       // Parse SSE stream
       _sseSubscription = response
@@ -266,8 +272,16 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
       // cập nhật xóa hoặc thêm mới vào list
       if (sos.status == 'RESOLVED' || sos.status == 'CANCELLED') {
         sosList.removeWhere((s) => s.sosId == sos.sosId);
+        if (Get.isRegistered<EmergencyController>()) {
+          final emCtrl = Get.find<EmergencyController>();
+          if (emCtrl.isSosActive.value &&
+              emCtrl.activeSosId.value == sos.sosId) {
+            emCtrl.resetSosState();
+            StorageService.to.clearActiveSos();
+          }
+        }
         debugPrint('[SOS-SSE] 🗑️ Đã rút ghim SOS khỏi bản đồ: ${sos.sosId}');
-        return; 
+        return;
       }
 
       // Update or add to list
@@ -375,6 +389,7 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
         '[SOS-SSE] ⏱ Watchdog: ${_watchdogTimeout.inSeconds}s không có data — force reconnect',
       );
       _disconnect();
+      _retryCount = 0;
       _scheduleReconnect(immediately: true);
     });
   }
@@ -436,12 +451,18 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
       if (res.statusCode == 200) {
         final json = jsonDecode(body) as Map<String, dynamic>;
         if (json['success'] == true && json['data'] != null) {
-          await storage.setToken(json['data'] as String);
-          debugPrint('[SOS-SSE] ✅ Token mới đã lấy — reconnect stream');
-          // Token mới đã lưu, thử lại stream
-          _retryCount = 0;
-          _scheduleReconnect(immediately: true);
-          return;
+          final data = json['data'];
+          final String? newToken = data is String
+              ? data
+              : (data is Map ? data['token'] as String? : null);
+          if (newToken != null && newToken.isNotEmpty) {
+            await storage.setToken(newToken);
+            debugPrint('[SOS-SSE] ✅ Token mới đã lấy — reconnect stream');
+            // Token mới đã lưu, thử lại stream
+            _retryCount = 0;
+            _scheduleReconnect(immediately: true);
+            return;
+          }
         }
       }
     } catch (e) {
@@ -459,6 +480,19 @@ class SosStreamService extends GetxService with WidgetsBindingObserver {
     await storage.removeToken();
     await storage.clearCredentials();
     await storage.clearUserInfo();
+    UserProfileController.clearCache();
+    if (Get.isRegistered<MapController>()) {
+      Get.delete<MapController>(force: true);
+    }
+    if (Get.isRegistered<LoginController>()) {
+      Get.delete<LoginController>(force: true);
+    }
+    if (Get.isRegistered<UserProfileController>(tag: 'my_profile')) {
+      Get.delete<UserProfileController>(tag: 'my_profile', force: true);
+    }
+    if (Get.isRegistered<ProfileController>()) {
+      Get.delete<ProfileController>(force: true);
+    }
     Get.offAllNamed('/login');
   }
 

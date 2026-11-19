@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../models/sos_model.dart';
 import '../services/api_service.dart';
 
@@ -15,16 +17,25 @@ class SosRepository {
     String? phoneNumber,
   }) async {
     try {
+      final payload = <String, dynamic>{
+        'latitude': lat,
+        'longitude': lng,
+        'note': note,
+      };
+      if (phoneNumber != null && phoneNumber.trim().isNotEmpty) {
+        payload['phoneNumber'] = phoneNumber.trim();
+      }
+
       final response = await _apiService.dio.post(
         '/sos/alert',
-        data: {
-          'latitude': lat,
-          'longitude': lng,
-          'note': note,
-          'phoneNumber': phoneNumber,
-        },
+        data: payload,
       );
-      return SosResponseDTO.fromJson(response.data);
+
+      final raw = response.data;
+      final Map<String, dynamic> jsonMap = (raw is Map && raw['data'] is Map)
+          ? Map<String, dynamic>.from(raw['data'] as Map)
+          : (raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{});
+      return SosResponseDTO.fromJson(jsonMap);
     } catch (e) {
       throw Exception('Lỗi khi phát tín hiệu SOS: $e');
     }
@@ -34,6 +45,13 @@ class SosRepository {
   Future<void> cancelSosAlert(String sosId) async {
     try {
       await _apiService.dio.delete('/sos/$sosId');
+    } on DioException catch (e) {
+      final statusCode = e.response?.statusCode;
+      // Nếu SOS đã bị xóa/kết thúc trước đó trên server (404/410) thì coi như hủy thành công
+      if (statusCode == 404 || statusCode == 410) {
+        return;
+      }
+      throw Exception('Lỗi khi hủy SOS: $e');
     } catch (e) {
       throw Exception('Lỗi khi hủy SOS: $e');
     }
@@ -65,9 +83,19 @@ class SosRepository {
   Future<List<SosResponseDTO>> _fetchActiveSosAlerts() async {
     try {
       final response = await _apiService.dio.get('/sos/active');
-      final List data = response.data as List;
+      final raw = response.data;
+      final List<dynamic> data = raw is List
+          ? raw
+          : (raw is Map && raw['data'] is List
+                ? raw['data'] as List
+                : (raw is Map &&
+                          raw['data'] is Map &&
+                          (raw['data'] as Map)['content'] is List
+                      ? (raw['data'] as Map)['content'] as List
+                      : <dynamic>[]));
       return data
-          .map((json) => SosResponseDTO.fromJson(json as Map<String, dynamic>))
+          .whereType<Map>()
+          .map((json) => SosResponseDTO.fromJson(Map<String, dynamic>.from(json)))
           .toList();
     } catch (e) {
       throw Exception('Lỗi khi lấy danh sách SOS: $e');

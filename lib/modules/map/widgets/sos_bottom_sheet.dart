@@ -12,6 +12,13 @@ import '../../../widgets/custom_alert.dart';
 import '../controllers/map_controller.dart';
 
 class SosBottomSheet {
+  static bool _isValidPhone(String? raw) {
+    if (raw == null) return false;
+    final trimmed = raw.trim();
+    return trimmed.isNotEmpty &&
+        RegExp(r'^[+\d][\d\s\-().]{2,}$').hasMatch(trimmed);
+  }
+
   static void show({required SosResponseDTO sos}) {
     if (sos.latitude != null && sos.longitude != null) {
       if (Get.isRegistered<MapController>()) {
@@ -124,8 +131,8 @@ class SosBottomSheet {
                   Icon(Icons.phone, size: 20.sp, color: AppTheme.subTextColor), 
                   SizedBox(width: 8.w),
                   Text(
-                    (sos.phoneNumber != null && sos.phoneNumber!.isNotEmpty)
-                        ? sos.phoneNumber!
+                    _isValidPhone(sos.phoneNumber)
+                        ? sos.phoneNumber!.trim()
                         : 'sos_no_phone_number'.tr,
                     style: TextStyle(
                       fontSize: 15.sp,
@@ -157,10 +164,10 @@ class SosBottomSheet {
                       icon: Icons.call, 
                       type: ButtonType.primary, 
                       onPressed: () async {
-                        if (sos.phoneNumber != null && sos.phoneNumber!.isNotEmpty) {
+                        if (_isValidPhone(sos.phoneNumber)) {
                           final Uri launchUri = Uri(
                             scheme: 'tel',
-                            path: sos.phoneNumber,
+                            path: sos.phoneNumber!.trim(),
                           );
                           if (await canLaunchUrl(launchUri)) {
                             await launchUrl(launchUri, mode: LaunchMode.externalApplication);

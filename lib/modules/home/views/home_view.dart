@@ -185,7 +185,9 @@ class HomeView extends GetView<HomeController> {
             final isMinimized =
                 isEmergencyRegistered &&
                 Get.find<EmergencyController>().isSheetMinimized.value;
-            final isVisible = isSosActive && isMinimized;
+            final isVisible =
+                isSosActive &&
+                (isMinimized || controller.currentIndex.value != 1);
 
             return AnimatedPositioned(
               duration: const Duration(milliseconds: 350),

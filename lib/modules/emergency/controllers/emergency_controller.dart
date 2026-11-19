@@ -10,6 +10,7 @@ import '../../../data/models/sos_model.dart';
 import '../../../data/repositories/sos_repository.dart';
 import '../../../data/services/sos_stream_service.dart';
 import '../../../routes/app_pages.dart';
+import '../../dashboard/controllers/dashboard_controller.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../map/controllers/map_controller.dart';
 
@@ -202,8 +203,73 @@ class EmergencyController extends GetxController {
     }
   }
 
+  /// Kiểm tra dịch vụ vị trí, xin quyền và lấy tọa độ GPS an toàn kèm các lớp dự phòng
+  Future<LatLng?> _resolveSosLocation() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      CustomAlert.showError('map_location_service_disabled'.tr);
+      return null;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        CustomAlert.showError('map_location_permission_denied'.tr);
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      CustomAlert.showError('map_location_permission_denied_forever'.tr);
+      return null;
+    }
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      return LatLng(position.latitude, position.longitude);
+    } catch (e) {
+      debugPrint('[SOS] getCurrentPosition thất bại/timeout: $e');
+    }
+
+    try {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        return LatLng(lastKnown.latitude, lastKnown.longitude);
+      }
+    } catch (e) {
+      debugPrint('[SOS] getLastKnownPosition thất bại: $e');
+    }
+
+    if (Get.isRegistered<MapController>()) {
+      final mapLoc = Get.find<MapController>().userLocation.value;
+      if (mapLoc != null) {
+        return mapLoc;
+      }
+    }
+
+    if (Get.isRegistered<DashboardController>()) {
+      final dash = Get.find<DashboardController>();
+      final lat = dash.userLat.value;
+      final lng = dash.userLng.value;
+      if (dash.hasUserLocation && lat != null && lng != null) {
+        return LatLng(lat, lng);
+      }
+    }
+
+    CustomAlert.showError('cannot_get_location'.tr);
+    return null;
+  }
+
   /// Hàm chạy khi người dùng bấm "Phát tín hiệu"
   Future<void> sendSosAlert() async {
+    if (isLoading.value) return;
+
     final note = noteController.text.trim();
     if (note.isEmpty) {
       CustomAlert.showWarning('emergency_note_empty_warning'.tr);
@@ -212,45 +278,57 @@ class EmergencyController extends GetxController {
 
     try {
       isLoading.value = true;
-      
-      // 1. Lấy tọa độ GPS chính xác
-      Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
 
-      // 2. Lấy thông tin tài khoản hiện tại từ Storage
-      final currentPhone = StorageService.to.getPhoneNumber() ?? '';
-      final currentUsername = StorageService.to.getUsername() ?? '';
+      // 1. Lấy tọa độ GPS an toàn (có kiểm tra quyền, timeout và fallback)
+      final coords = await _resolveSosLocation();
+      if (coords == null) return;
+
+      // 2. Lấy thông tin tài khoản hiện tại từ Storage (chỉ gửi SĐT thật, không dùng username thay thế)
+      final currentPhone = (StorageService.to.getPhoneNumber() ?? '').trim();
+      final currentUsername = (StorageService.to.getUsername() ?? '').trim();
       final currentUserId = StorageService.to.getUserId();
-      final phoneNumber = currentPhone.isNotEmpty ? currentPhone : currentUsername;
+      final String? phoneNumber = currentPhone.isNotEmpty ? currentPhone : null;
 
       // 3. Gửi lên Server
       final result = await _sosRepo.createSosAlert(
-        lat: position.latitude,
-        lng: position.longitude,
+        lat: coords.latitude,
+        lng: coords.longitude,
         note: note,
         phoneNumber: phoneNumber,
       );
 
-      // 4. Cập nhật state & lưu Storage gắn với tài khoản của người dùng
+      // 4. Cập nhật state & đồng bộ vào stream/storage
       activeSosId.value = result.sosId;
-      activeSosLat.value = position.latitude;
-      activeSosLng.value = position.longitude;
+      activeSosLat.value = coords.latitude;
+      activeSosLng.value = coords.longitude;
       activeSosNote.value = note;
-      isSosActive.value = true;
       isSheetMinimized.value = false;
+      isSosActive.value = true;
+
+      if (Get.isRegistered<SosStreamService>() && result.sosId.isNotEmpty) {
+        final streamList = SosStreamService.to.sosList;
+        final existingIdx = streamList.indexWhere(
+          (s) => s.sosId == result.sosId,
+        );
+        if (existingIdx >= 0) {
+          streamList[existingIdx] = result;
+        } else {
+          streamList.insert(0, result);
+        }
+      }
 
       await StorageService.to.saveActiveSos(
         sosId: result.sosId,
-        lat: position.latitude,
-        lng: position.longitude,
+        lat: coords.latitude,
+        lng: coords.longitude,
         note: note,
         userId: currentUserId,
         phoneNumber: currentPhone,
         username: currentUsername,
       );
+
+      // Chỉ xóa ô nhập ghi chú sau khi phát tín hiệu thành công
+      noteController.clear();
 
       // 5. Đóng dialog nhập ghi chú
       if (Get.isDialogOpen ?? false) {
@@ -267,23 +345,25 @@ class EmergencyController extends GetxController {
         Get.find<HomeController>().changeTab(1);
       }
 
-      // 8. Di chuyển camera bản đồ đến đúng tọa độ GPS của người dùng
+      // 8. Căn chỉnh camera bản đồ theo tọa độ SOS kèm offset của sheet
       if (Get.isRegistered<MapController>()) {
-        Get.find<MapController>().moveToLocation(
-          LatLng(position.latitude, position.longitude),
+        Get.find<MapController>().centerOnActiveSos(
+          isOffsetForSheet: true,
           zoom: 16.0,
+          animated: true,
         );
       }
     } catch (e) {
       CustomAlert.showError('emergency_send_error'.trParams({'error': e.toString()}));
     } finally {
       isLoading.value = false;
-      noteController.clear(); 
     }
   }
 
   /// Đóng tín hiệu SOS (Duy nhất 1 nút bấm đóng/kết thúc SOS)
   Future<void> closeActiveSos() async {
+    if (isLoading.value) return;
+
     try {
       isLoading.value = true;
       final id = activeSosId.value;

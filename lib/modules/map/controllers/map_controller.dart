@@ -243,7 +243,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
   double _lastSosLng = 0;
   String _lastSosId = '';
   bool _lastSosActive = false;
-  int _lastSosListCount = -1;
+  String _lastSosSignature = '';
 
   double get _safeCurrentZoom {
     try {
@@ -618,6 +618,9 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     // Lắng nghe trạng thái SOS của chính mình từ EmergencyController
     if (Get.isRegistered<EmergencyController>()) {
       final emergencyCtrl = Get.find<EmergencyController>();
+      if (emergencyCtrl.isSosActive.value) {
+        _buildSosMarkers();
+      }
       _workers.add(
         ever(emergencyCtrl.isSosActive, (isActive) {
           _buildSosMarkers();
@@ -761,6 +764,8 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     if (lat == 0.0 || lng == 0.0) return;
 
     _hasCustomCameraFocus = true;
+    // Nếu FlutterMap chưa mount lần đầu, onMapReady() sẽ tự căn chỉnh ngay khi sẵn sàng
+    if (!_isMapEngineReady) return;
     final currentZoom = _safeCurrentZoom;
     final targetZoom = zoom ?? (currentZoom < 15.0 ? 16.0 : currentZoom);
 
@@ -847,6 +852,14 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     if (pendingTarget != null) {
       _pendingFocusTarget = null;
       moveToLocation(pendingTarget, zoom: 16.5);
+    } else if (Get.isRegistered<EmergencyController>() &&
+        Get.find<EmergencyController>().isSosActive.value) {
+      final emCtrl = Get.find<EmergencyController>();
+      centerOnActiveSos(
+        isOffsetForSheet: !emCtrl.isSheetMinimized.value,
+        zoom: 16.0,
+        animated: false,
+      );
     }
     _lastClusteredZoom = _safeCurrentZoom;
     _buildPostMarkers(zoom: _lastClusteredZoom);
@@ -1695,14 +1708,21 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     }
 
     final sosList = SosStreamService.to.sosList;
+    final sosSignature = sosList
+        .map(
+          (s) =>
+              '${s.sosId}:${s.latitude}:${s.longitude}:${s.status}:${s.note}',
+        )
+        .join('|');
+    final shouldHaveMarkers = isMySosActive || sosList.isNotEmpty;
 
-    // Tránh re-render không cần thiết nếu tọa độ hoặc danh sách không thay đổi
+    // Tránh re-render không cần thiết nếu tọa độ, trạng thái và nội dung danh sách không thay đổi
     if (_lastSosActive == isMySosActive &&
         _lastSosId == myActiveId &&
         _lastSosLat == myLat &&
         _lastSosLng == myLng &&
-        _lastSosListCount == sosList.length &&
-        _sosMarkers.isNotEmpty) {
+        _lastSosSignature == sosSignature &&
+        (!shouldHaveMarkers || _sosMarkers.isNotEmpty)) {
       return;
     }
 
@@ -1710,7 +1730,7 @@ class MapController extends GetxController with GetTickerProviderStateMixin {
     _lastSosId = myActiveId;
     _lastSosLat = myLat;
     _lastSosLng = myLng;
-    _lastSosListCount = sosList.length;
+    _lastSosSignature = sosSignature;
 
     _sosMarkers.clear();
 
