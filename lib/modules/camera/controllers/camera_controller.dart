@@ -19,6 +19,10 @@ import '../../profile/controllers/profile_controller.dart';
 enum ImageModerationStatus { none, checking, valid, invalid, error }
 
 class CameraController extends GetxController {
+  /// Cờ bật/tắt tính năng kiểm duyệt hình ảnh bằng AI.
+  /// Đặt thành `true` để bật lại kiểm duyệt qua API.
+  static const bool enableImageModeration = false;
+
   ImagePicker get _picker => ImagePickerService.to.picker;
   final TrafficPostRepository _repository = TrafficPostRepository();
 
@@ -205,6 +209,15 @@ class CameraController extends GetxController {
     if (currentPath.isEmpty || !hasImage.value) return;
 
     _moderationCancelToken?.cancel('New image moderation started');
+
+    // Tạm thời tắt kiểm duyệt hình ảnh: tự động duyệt ảnh hợp lệ luôn
+    if (!enableImageModeration) {
+      _moderationCancelToken = null;
+      moderationStatus.value = ImageModerationStatus.valid;
+      moderationMessage.value = '';
+      return;
+    }
+
     final cancelToken = CancelToken();
     _moderationCancelToken = cancelToken;
 
