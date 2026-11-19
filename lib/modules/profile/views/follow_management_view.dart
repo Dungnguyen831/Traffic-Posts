@@ -281,38 +281,65 @@ class FollowManagementView extends GetView<FollowManagementController> {
             child: Row(
               children: [
                 // 1. Avatar
-                Container(
-                  width: 48.w,
-                  height: 48.w,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
+                Builder(
+                  builder: (context) {
+                    final avatarUrl = user.fullAvatarUrl?.trim();
+                    final hasAvatar =
+                        avatarUrl != null && avatarUrl.isNotEmpty;
+                    final avatarBorder = Border.all(
                       color: AppTheme.primaryColor.withValues(alpha: 0.2),
                       width: 1.5,
-                    ),
-                  ),
-                  child: ClipOval(
-                    child: user.fullAvatarUrl != null &&
-                            user.fullAvatarUrl!.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: user.fullAvatarUrl!,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(
-                              color: AppTheme.inputFillColor,
-                              child: const Center(
-                                child: SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                    );
+
+                    return SizedBox(
+                      width: 48.w,
+                      height: 48.w,
+                      child: hasAvatar
+                          ? CachedNetworkImage(
+                              imageUrl: avatarUrl,
+                              width: 48.w,
+                              height: 48.w,
+                              fit: BoxFit.cover,
+                              fadeInDuration: Duration.zero,
+                              fadeOutDuration: Duration.zero,
+                              imageBuilder: (context, imageProvider) =>
+                                  Container(
+                                    width: 48.w,
+                                    height: 48.w,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: AppTheme.inputFillColor,
+                                      border: avatarBorder,
+                                      image: DecorationImage(
+                                        image: imageProvider,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                              placeholder: (context, url) => Container(
+                                width: 48.w,
+                                height: 48.w,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: AppTheme.inputFillColor,
+                                  border: avatarBorder,
+                                ),
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            errorWidget: (context, url, error) => _buildAvatarPlaceholder(),
-                          )
-                        : _buildAvatarPlaceholder(),
-                  ),
+                              errorWidget: (context, url, error) =>
+                                  _buildAvatarPlaceholder(),
+                            )
+                          : _buildAvatarPlaceholder(),
+                    );
+                  },
                 ),
                 SizedBox(width: 12.w),
 
@@ -421,7 +448,16 @@ class FollowManagementView extends GetView<FollowManagementController> {
 
   Widget _buildAvatarPlaceholder() {
     return Container(
-      color: AppTheme.inputFillColor,
+      width: 48.w,
+      height: 48.w,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppTheme.inputFillColor,
+        border: Border.all(
+          color: AppTheme.primaryColor.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
+      ),
       child: Icon(
         IconlyBroken.profile,
         size: 26.sp,

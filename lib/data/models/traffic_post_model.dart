@@ -127,16 +127,29 @@ class TrafficPostModel {
 
   /// Full avatar URL
   String? get fullAvatarUrl {
-    if (avatarUrl == null || avatarUrl!.isEmpty) return null;
+    if (avatarUrl == null || avatarUrl!.trim().isEmpty) return null;
+    final raw = avatarUrl!.trim();
 
     // Nếu đã là URL đầy đủ, return luôn
-    if (avatarUrl!.startsWith('http://') || avatarUrl!.startsWith('https://')) {
-      return avatarUrl;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
     }
 
     // Thêm base URL
-    final baseUrl = dotenv.env['BASE_URL'] ?? '';
-    return '$baseUrl/uploads/$avatarUrl';
+    final baseUrl = (dotenv.env['BASE_URL'] ?? '').replaceAll(
+      RegExp(r'/+$'),
+      '',
+    );
+    if (raw.startsWith('/uploads/')) {
+      return '$baseUrl$raw';
+    }
+    if (raw.startsWith('uploads/')) {
+      return '$baseUrl/$raw';
+    }
+    if (raw.startsWith('/')) {
+      return '$baseUrl/uploads$raw';
+    }
+    return '$baseUrl/uploads/$raw';
   }
 
   /// Bài viết đã bị admin ẩn hoặc xóa (`status == 'DELETED'`)

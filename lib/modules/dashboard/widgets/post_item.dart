@@ -538,22 +538,39 @@ class _PostItemState extends State<PostItem>
                   );
                   final avatarHeroTag =
                       'avatar_${post.id ?? post.hashCode}_${identityHashCode(widget)}';
+                  final avatarUrl = post.fullAvatarUrl?.trim();
+                  final hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
 
-                  final avatarWidget = ClipOval(
-                    child: post.fullAvatarUrl != null
+                  final avatarWidget = SizedBox(
+                    width: 40.w,
+                    height: 40.w,
+                    child: hasAvatar
                         ? CachedNetworkImage(
-                            imageUrl: post.fullAvatarUrl!,
+                            imageUrl: avatarUrl,
                             width: 40.w,
                             height: 40.w,
                             fit: BoxFit.cover,
-                            memCacheWidth: 120,
-                            memCacheHeight: 120,
                             fadeInDuration: Duration.zero,
                             fadeOutDuration: Duration.zero,
+                            imageBuilder: (context, imageProvider) => Container(
+                              width: 40.w,
+                              height: 40.w,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.grey[300],
+                                image: DecorationImage(
+                                  image: imageProvider,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
                             placeholder: (context, url) => Container(
                               width: 40.w,
                               height: 40.w,
-                              color: Colors.grey[300],
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.grey[300],
+                              ),
                               child: Icon(
                                 IconlyBroken.profile,
                                 size: 22.w,
@@ -563,7 +580,10 @@ class _PostItemState extends State<PostItem>
                             errorWidget: (context, url, error) => Container(
                               width: 40.w,
                               height: 40.w,
-                              color: Colors.grey[300],
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.grey[300],
+                              ),
                               child: Icon(
                                 IconlyBroken.profile,
                                 size: 24.w,

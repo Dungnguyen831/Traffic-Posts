@@ -118,74 +118,122 @@ class DashboardHeader extends StatelessWidget {
         // Avatar - hiển thị từ ProfileController
         GestureDetector(
           onTap: () {
+            final currentAvatar = profileController.currentAvatarUrl.value.trim();
             Get.to(
               () => const UserProfileScreen(),
               arguments: {
                 'heroTag': 'user_avatar',
-                'initialAvatarUrl': profileController.currentAvatarUrl.value,
+                'initialAvatarUrl': currentAvatar.isNotEmpty
+                    ? currentAvatar
+                    : null,
               },
             );
           },
           child: Hero(
             tag: 'user_avatar',
             child: Obx(() {
-              final avatarUrl = profileController.currentAvatarUrl.value;
+              final avatarUrl = profileController.currentAvatarUrl.value.trim();
               final isLoading = profileController.isLoading.value;
+              final border = Border.all(
+                color: AppTheme.primaryColor.withValues(alpha: 0.18),
+                width: 1,
+              );
 
-              return Container(
+              if (isLoading && avatarUrl.isEmpty) {
+                return Container(
+                  width: 36.w,
+                  height: 36.w,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBgColor,
+                    shape: BoxShape.circle,
+                    border: border,
+                  ),
+                  child: Center(
+                    child: SizedBox(
+                      width: 16.w,
+                      height: 16.w,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              if (avatarUrl.isEmpty) {
+                return Container(
+                  width: 36.w,
+                  height: 36.w,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBgColor,
+                    shape: BoxShape.circle,
+                    border: border,
+                  ),
+                  child: Icon(
+                    IconlyBroken.profile,
+                    size: 20.sp,
+                    color: AppTheme.primaryColor,
+                  ),
+                );
+              }
+
+              return SizedBox(
                 width: 36.w,
                 height: 36.w,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryBgColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.18),
-                    width: 1,
+                child: CachedNetworkImage(
+                  imageUrl: avatarUrl,
+                  width: 36.w,
+                  height: 36.w,
+                  fit: BoxFit.cover,
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  imageBuilder: (context, imageProvider) => Container(
+                    width: 36.w,
+                    height: 36.w,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBgColor,
+                      shape: BoxShape.circle,
+                      border: border,
+                      image: DecorationImage(
+                        image: imageProvider,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
-                ),
-                child: ClipOval(
-                  child: (isLoading && avatarUrl.isEmpty)
-                      ? Center(
-                          child: SizedBox(
-                            width: 16.w,
-                            height: 16.w,
-                            child: const CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppTheme.primaryColor,
-                            ),
-                          ),
-                        )
-                      : (avatarUrl.isEmpty
-                            ? Icon(
-                                IconlyBroken.profile,
-                                size: 20.sp,
-                                color: AppTheme.primaryColor,
-                              )
-                            : CachedNetworkImage(
-                                imageUrl: avatarUrl,
-                                fit: BoxFit.cover,
-                                width: 36.w,
-                                height: 36.w,
-                                memCacheWidth: 120,
-                                memCacheHeight: 120,
-                                fadeInDuration: Duration.zero,
-                                fadeOutDuration: Duration.zero,
-                                placeholder: (context, url) => Center(
-                                  child: SizedBox(
-                                    width: 16.w,
-                                    height: 16.w,
-                                    child: const CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppTheme.primaryColor,
-                                    ),
-                                  ),
-                                ),
-                                errorWidget: (context, url, error) => Icon(
-                                  IconlyBroken.profile,
-                                  size: 20.sp,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              )),
+                  placeholder: (context, url) => Container(
+                    width: 36.w,
+                    height: 36.w,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBgColor,
+                      shape: BoxShape.circle,
+                      border: border,
+                    ),
+                    child: Center(
+                      child: SizedBox(
+                        width: 16.w,
+                        height: 16.w,
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    width: 36.w,
+                    height: 36.w,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBgColor,
+                      shape: BoxShape.circle,
+                      border: border,
+                    ),
+                    child: Icon(
+                      IconlyBroken.profile,
+                      size: 20.sp,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
                 ),
               );
             }),

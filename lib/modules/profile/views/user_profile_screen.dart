@@ -186,8 +186,14 @@ class UserProfileScreen extends StatelessWidget {
               SliverToBoxAdapter(
                 child: Obx(() {
                   final user = controller.userInfo.value;
+                  // Sau khi tải xong user từ server, chỉ dùng avatar thực của user (không giữ lại initialAvatarUrl cũ)
+                  final rawAvatarUrl = user != null
+                      ? user.fullAvatarUrl
+                      : initialAvatarUrl;
                   final displayAvatarUrl =
-                      user?.fullAvatarUrl ?? initialAvatarUrl;
+                      (rawAvatarUrl != null && rawAvatarUrl.trim().isNotEmpty)
+                          ? rawAvatarUrl.trim()
+                          : null;
                   final displayUserName =
                       user?.fullname ?? initialUserName ?? 'profile_loading'.tr;
 
@@ -198,27 +204,70 @@ class UserProfileScreen extends StatelessWidget {
                         tag:
                             heroTag ??
                             'avatar_default_${controller.targetUserId}',
-                        child: ClipOval(
+                        child: SizedBox(
+                          width: 90.w,
+                          height: 90.w,
                           child: displayAvatarUrl != null
                               ? CachedNetworkImage(
                                   imageUrl: displayAvatarUrl,
                                   width: 90.w,
                                   height: 90.w,
                                   fit: BoxFit.cover,
-                                  placeholder: (context, url) =>
-                                      const CircularProgressIndicator(
-                                        color: AppTheme.primaryColor,
+                                  fadeInDuration: Duration.zero,
+                                  fadeOutDuration: Duration.zero,
+                                  imageBuilder: (context, imageProvider) =>
+                                      Container(
+                                        width: 90.w,
+                                        height: 90.w,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Colors.grey[200],
+                                          image: DecorationImage(
+                                            image: imageProvider,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
                                       ),
-                                  errorWidget: (context, url, error) => Icon(
-                                    IconlyBroken.profile,
-                                    size: 50.sp,
-                                    color: Colors.grey,
+                                  placeholder: (context, url) => Container(
+                                    width: 90.w,
+                                    height: 90.w,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.grey[200],
+                                    ),
+                                    child: Center(
+                                      child: SizedBox(
+                                        width: 28.w,
+                                        height: 28.w,
+                                        child: const CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: AppTheme.primaryColor,
+                                        ),
+                                      ),
+                                    ),
                                   ),
+                                  errorWidget: (context, url, error) =>
+                                      Container(
+                                        width: 90.w,
+                                        height: 90.w,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Colors.grey[200],
+                                        ),
+                                        child: Icon(
+                                          IconlyBroken.profile,
+                                          size: 50.sp,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
                                 )
                               : Container(
                                   width: 90.w,
                                   height: 90.w,
-                                  color: Colors.grey[200],
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.grey[200],
+                                  ),
                                   child: Icon(
                                     IconlyBroken.profile,
                                     size: 50.sp,

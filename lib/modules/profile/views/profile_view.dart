@@ -104,58 +104,70 @@ class _ProfileViewState extends State<ProfileView> {
                           }
 
                           // 2. Nếu có URL ảnh từ server (Network)
-                          if (controller.currentAvatarUrl.value.isNotEmpty) {
+                          final avatarUrl =
+                              controller.currentAvatarUrl.value.trim();
+                          if (avatarUrl.isNotEmpty) {
                             return Hero(
                               tag: 'user_avatar',
-                              child: CachedNetworkImage(
-                                imageUrl: controller.currentAvatarUrl.value,
-                                imageBuilder: (context, imageProvider) =>
-                                    Container(
-                                      width: 100.w,
-                                      height: 100.w,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        image: DecorationImage(
-                                          image: imageProvider,
-                                          fit: BoxFit.cover,
-                                        ),
-                                        border: Border.all(
-                                          color: Colors.white,
-                                          width: 2,
+                              child: SizedBox(
+                                width: 100.w,
+                                height: 100.w,
+                                child: CachedNetworkImage(
+                                  imageUrl: avatarUrl,
+                                  width: 100.w,
+                                  height: 100.w,
+                                  fit: BoxFit.cover,
+                                  fadeInDuration: Duration.zero,
+                                  fadeOutDuration: Duration.zero,
+                                  imageBuilder: (context, imageProvider) =>
+                                      Container(
+                                        width: 100.w,
+                                        height: 100.w,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          image: DecorationImage(
+                                            image: imageProvider,
+                                            fit: BoxFit.cover,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 2,
+                                          ),
                                         ),
                                       ),
+                                  placeholder: (context, url) => Container(
+                                    width: 100.w,
+                                    height: 100.w,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: AppTheme.inputFillColor,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
                                     ),
-                                placeholder: (context, url) => Container(
-                                  width: 100.w,
-                                  height: 100.w,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: AppTheme.inputFillColor,
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: LoadingWidget(height: 40.h),
-                                  ),
-                                ),
-                                errorWidget: (context, url, error) => Container(
-                                  width: 100.w,
-                                  height: 100.w,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: AppTheme.inputFillColor,
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 2,
+                                    child: Center(
+                                      child: LoadingWidget(height: 40.h),
                                     ),
                                   ),
-                                  child: Icon(
-                                    IconlyBroken.profile,
-                                    size: 50.sp,
-                                    color: AppTheme.subTextColor,
-                                  ),
+                                  errorWidget: (context, url, error) =>
+                                      Container(
+                                        width: 100.w,
+                                        height: 100.w,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: AppTheme.inputFillColor,
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 2,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          IconlyBroken.profile,
+                                          size: 50.sp,
+                                          color: AppTheme.subTextColor,
+                                        ),
+                                      ),
                                 ),
                               ),
                             );

@@ -60,16 +60,29 @@ class UserInfoModel {
 
   /// Hàm hỗ trợ lấy link ảnh avatar đầy đủ (Giống hệt cách làm bên TrafficPostModel)
   String? get fullAvatarUrl {
-    if (avatarUrl == null || avatarUrl!.isEmpty) return null;
+    if (avatarUrl == null || avatarUrl!.trim().isEmpty) return null;
+    final raw = avatarUrl!.trim();
 
     // Nếu Backend đã trả về URL đầy đủ (chứa http/https), thì dùng luôn
-    if (avatarUrl!.startsWith('http://') || avatarUrl!.startsWith('https://')) {
-      return avatarUrl;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
     }
 
     // Nếu Backend chỉ trả về tên file (VD: "avatar_123.jpg"), thì ghép với BASE_URL
-    final baseUrl = dotenv.env['BASE_URL'] ?? '';
-    return '$baseUrl/uploads/$avatarUrl';
+    final baseUrl = (dotenv.env['BASE_URL'] ?? '').replaceAll(
+      RegExp(r'/+$'),
+      '',
+    );
+    if (raw.startsWith('/uploads/')) {
+      return '$baseUrl$raw';
+    }
+    if (raw.startsWith('uploads/')) {
+      return '$baseUrl/$raw';
+    }
+    if (raw.startsWith('/')) {
+      return '$baseUrl/uploads$raw';
+    }
+    return '$baseUrl/uploads/$raw';
   }
 
   UserInfoModel copyWith({

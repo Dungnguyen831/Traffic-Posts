@@ -225,47 +225,80 @@ class RankingItemCard extends StatelessWidget {
   }
 
   Widget _buildAvatar(String heroTag) {
-    final avatarUrl = user.fullAvatarUrl;
+    final avatarUrl = user.fullAvatarUrl?.trim();
+    final hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
+    final shadow = [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.06),
+        blurRadius: 8,
+        offset: const Offset(0, 2),
+      ),
+    ];
 
     return Hero(
       tag: heroTag,
-      child: Container(
+      child: SizedBox(
         width: 44.w,
         height: 44.w,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.white,
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: ClipOval(
-          child: avatarUrl != null && avatarUrl.isNotEmpty
-              ? CachedNetworkImage(
-                  imageUrl: avatarUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    color: AppTheme.inputFillColor,
-                    child: Center(child: LoadingWidget(height: 20.h)),
+        child: hasAvatar
+            ? CachedNetworkImage(
+                imageUrl: avatarUrl,
+                width: 44.w,
+                height: 44.w,
+                fit: BoxFit.cover,
+                fadeInDuration: Duration.zero,
+                fadeOutDuration: Duration.zero,
+                imageBuilder: (context, imageProvider) => Container(
+                  width: 44.w,
+                  height: 44.w,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white,
+                      width: 1.5,
+                    ),
+                    boxShadow: shadow,
+                    image: DecorationImage(
+                      image: imageProvider,
+                      fit: BoxFit.cover,
+                    ),
                   ),
-                  errorWidget: (context, url, error) => _buildDefaultAvatar(),
-                )
-              : _buildDefaultAvatar(),
-        ),
+                ),
+                placeholder: (context, url) => Container(
+                  width: 44.w,
+                  height: 44.w,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.inputFillColor,
+                    border: Border.all(
+                      color: Colors.white,
+                      width: 1.5,
+                    ),
+                    boxShadow: shadow,
+                  ),
+                  child: Center(child: LoadingWidget(height: 20.h)),
+                ),
+                errorWidget: (context, url, error) =>
+                    _buildDefaultAvatar(shadow: shadow),
+              )
+            : _buildDefaultAvatar(shadow: shadow),
       ),
     );
   }
 
-  Widget _buildDefaultAvatar() {
+  Widget _buildDefaultAvatar({List<BoxShadow>? shadow}) {
     return Container(
-      color: AppTheme.inputFillColor,
+      width: 44.w,
+      height: 44.w,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppTheme.inputFillColor,
+        border: Border.all(
+          color: Colors.white,
+          width: 1.5,
+        ),
+        boxShadow: shadow,
+      ),
       child: Icon(
         IconlyBroken.profile,
         size: 24.sp,

@@ -1,11 +1,14 @@
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:traffic_app/data/models/traffic_post_model.dart';
+import 'package:traffic_app/data/models/user_info_model.dart';
 import 'package:traffic_app/modules/dashboard/widgets/post_item.dart';
 
 void main() {
@@ -327,5 +330,122 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(tappedTag, isNull);
+  });
+
+  testWidgets(
+      'PostItem avatar does not use ResizeImage distortion and stays square 1:1',
+      (WidgetTester tester) async {
+    final isLikedRx = false.obs;
+    final likeCountRx = 1.obs;
+    final isFollowedRx = false.obs;
+
+    final postWithAvatar = TrafficPostModel(
+      id: 'post_avatar_shape_test',
+      userId: '22',
+      userName: 'Avatar Tester',
+      avatarUrl: 'https://example.com/non_square_avatar.jpg',
+      content: 'Kiểm tra avatar tròn trên bài viết',
+      timestamp: DateTime.now(),
+      likes: 1,
+      isLiked: false,
+    );
+
+    await tester.pumpWidget(
+      ScreenUtilInit(
+        designSize: const Size(375, 812),
+        builder: (context, child) => GetMaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PostItem(
+                post: postWithAvatar,
+                isLikedRx: isLikedRx,
+                likeCountRx: likeCountRx,
+                isFollowedRx: isFollowedRx,
+                onLike: () {},
+                onReport: () {},
+                onFollow: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final avatarImageFinder = find.byWidgetPredicate(
+      (w) =>
+          w is CachedNetworkImage &&
+          w.imageUrl == 'https://example.com/non_square_avatar.jpg',
+    );
+    expect(avatarImageFinder, findsOneWidget);
+
+    final cachedImage = tester.widget<CachedNetworkImage>(avatarImageFinder);
+    expect(cachedImage.memCacheWidth, isNull);
+    expect(cachedImage.memCacheHeight, isNull);
+    expect(cachedImage.fit, BoxFit.cover);
+    expect(cachedImage.imageBuilder, isNotNull);
+    expect(cachedImage.width, isNotNull);
+    expect(cachedImage.width, cachedImage.height);
+
+    final rawImageFinder = find.descendant(
+      of: avatarImageFinder,
+      matching: find.byType(Image),
+    );
+    expect(rawImageFinder, findsOneWidget);
+    final rawImage = tester.widget<Image>(rawImageFinder);
+    expect(rawImage.image, isNot(isA<ResizeImage>()));
+    expect(rawImage.image, isA<CachedNetworkImageProvider>());
+
+    final avatarSize = tester.getSize(avatarImageFinder);
+    expect(avatarSize.width, avatarSize.height);
+    expect(avatarSize.width, cachedImage.width);
+    expect(avatarSize.height, cachedImage.height);
+  });
+
+  test('TrafficPostModel and UserInfoModel normalize fullAvatarUrl consistently',
+      () {
+    dotenv.loadFromString(envString: 'BASE_URL=http://160.250.5.189/');
+
+    expect(
+      TrafficPostModel(avatarUrl: '  avatar.jpg  ').fullAvatarUrl,
+      'http://160.250.5.189/uploads/avatar.jpg',
+    );
+    expect(
+      TrafficPostModel(avatarUrl: '/uploads/avatar.jpg').fullAvatarUrl,
+      'http://160.250.5.189/uploads/avatar.jpg',
+    );
+    expect(
+      TrafficPostModel(avatarUrl: 'uploads/avatar.jpg').fullAvatarUrl,
+      'http://160.250.5.189/uploads/avatar.jpg',
+    );
+    expect(
+      TrafficPostModel(avatarUrl: '/avatar.jpg').fullAvatarUrl,
+      'http://160.250.5.189/uploads/avatar.jpg',
+    );
+    expect(
+      TrafficPostModel(avatarUrl: 'https://cdn.example.com/a.png').fullAvatarUrl,
+      'https://cdn.example.com/a.png',
+    );
+
+    expect(
+      UserInfoModel(avatarUrl: '  avatar.jpg  ').fullAvatarUrl,
+      'http://160.250.5.189/uploads/avatar.jpg',
+    );
+    expect(
+      UserInfoModel(avatarUrl: '/uploads/avatar.jpg').fullAvatarUrl,
+      'http://160.250.5.189/uploads/avatar.jpg',
+    );
+    expect(
+      UserInfoModel(avatarUrl: 'uploads/avatar.jpg').fullAvatarUrl,
+      'http://160.250.5.189/uploads/avatar.jpg',
+    );
+    expect(
+      UserInfoModel(avatarUrl: '/avatar.jpg').fullAvatarUrl,
+      'http://160.250.5.189/uploads/avatar.jpg',
+    );
+    expect(
+      UserInfoModel(avatarUrl: 'https://cdn.example.com/a.png').fullAvatarUrl,
+      'https://cdn.example.com/a.png',
+    );
   });
 }
